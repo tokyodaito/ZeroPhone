@@ -1,5 +1,13 @@
 package com.numenlabs.zerophone.core.policy
 
+import com.numenlabs.zerophone.core.context.ManualGrant
+import com.numenlabs.zerophone.core.context.ModeIds
+import com.numenlabs.zerophone.core.context.Rule
+import com.numenlabs.zerophone.core.context.RuleCondition
+import com.numenlabs.zerophone.core.context.RuleDecision
+import com.numenlabs.zerophone.core.context.RuleTarget
+import com.numenlabs.zerophone.core.context.TimeBudgetLedger
+import com.numenlabs.zerophone.core.context.WeekDay
 import com.numenlabs.zerophone.core.model.EmergencyWindow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -86,5 +94,48 @@ class PolicyRepositoryTest {
         repo.setAllowlist(setOf("com.whatsapp", "org.telegram.messenger"))
         runCatching { (repo.getAllowlist() as? MutableSet<String>)?.clear() }
         assertEquals(setOf("com.whatsapp", "org.telegram.messenger"), repo.getAllowlist())
+    }
+
+    @Test
+    fun `engine state defaults`() = runTest {
+        assertTrue(repo.getRules().isEmpty())
+        assertTrue(repo.getGrants().isEmpty())
+        assertEquals(ModeIds.WORK, repo.getActiveMode())
+        assertEquals(TimeBudgetLedger(), repo.getTimeBudgetLedger())
+    }
+
+    @Test
+    fun `rules roundtrip persists`() = runTest {
+        val rules = listOf(
+            Rule(
+                "evening-games",
+                RuleTarget.Package("game.app"),
+                RuleCondition.TimeWindow(17 * 60, 23 * 60, WeekDay.ALL),
+                RuleDecision.Allow
+            ),
+            Rule("focus-block", RuleTarget.All, RuleCondition.ActiveMode(ModeIds.FOCUS), RuleDecision.Block, priority = 5)
+        )
+        repo.setRules(rules)
+        assertEquals(rules, repo.getRules())
+    }
+
+    @Test
+    fun `grants roundtrip persists`() = runTest {
+        val grants = listOf(ManualGrant("game.app", 1_770_000_000_000L))
+        repo.setGrants(grants)
+        assertEquals(grants, repo.getGrants())
+    }
+
+    @Test
+    fun `active mode roundtrip persists`() = runTest {
+        repo.setActiveMode(ModeIds.REST)
+        assertEquals(ModeIds.REST, repo.getActiveMode())
+    }
+
+    @Test
+    fun `time budget ledger roundtrip persists`() = runTest {
+        val ledger = TimeBudgetLedger().withUsage("game.app", 3L, 15 * 60_000L)
+        repo.setTimeBudgetLedger(ledger)
+        assertEquals(ledger, repo.getTimeBudgetLedger())
     }
 }

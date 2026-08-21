@@ -8,6 +8,11 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.provider.Settings
 import com.numenlabs.zerophone.ZeroDeviceAdminReceiver
+import com.numenlabs.zerophone.core.context.AvailabilityState
+import com.numenlabs.zerophone.core.context.CapabilityRef
+import com.numenlabs.zerophone.core.context.EvaluationEnvironment
+import com.numenlabs.zerophone.core.context.RuleEngine
+import com.numenlabs.zerophone.core.context.SnapshotProvider
 import com.numenlabs.zerophone.core.model.EmergencyWindow
 
 /**
@@ -17,10 +22,15 @@ import com.numenlabs.zerophone.core.model.EmergencyWindow
  * [reconcile] is the single idempotent entry point used by:
  * app start/resume, alarm fire, boot, allowlist change, emergency-window expiry.
  * Persistence goes through the [PolicyRepository] interface (Preferences DataStore).
+ *
+ * The contextual [RuleEngine] decides which candidate packages resolve to
+ * BLOCKED; [SuspendPolicy] remains the hard guardrail that filters
+ * self/allowlist/protected packages before anything reaches DevicePolicyManager.
  */
 class PolicyApplier(
     context: Context,
-    private val store: PolicyRepository
+    private val store: PolicyRepository,
+    private val snapshotProvider: SnapshotProvider = SnapshotProvider.None
 ) {
 
     data class LauncherApp(
@@ -82,6 +92,19 @@ class PolicyApplier(
         reconcile()
     }
 
+    /** Active mode id (defaults to [com.numenlabs.zerophone.core.context.ModeIds.WORK]). */
+    suspend fun getActiveMode(): String = store.getActiveMode()
+
+    /** Switches the active mode and immediately re-evaluates the policy. */
+    suspend fun setActiveMode(mode: String) {
+        store.setActiveMode(mode)
+        reconcile()
+    }
+
+    /** Current engine state for an arbitrary capability (packages and logical). */
+    suspend fun availabilityOf(capability: CapabilityRef): AvailabilityState =
+        RuleEngine.evaluate(evaluationEnvironment(getAllowlist()), capability)
+
     /**
      * Idempotent policy application. Reads the persisted emergency deadline:
      *  - active window -> keep unlocked, (re-)schedule the re-lock alarm;
@@ -123,18 +146,55 @@ class PolicyApplier(
     }
 
     private suspend fun unsuspendBlockables() {
-        val toUnsuspend = computeSuspendSet(allowlist = emptySet()) + store.getLastSuspended()
+        // Unsuspension deliberately bypasses the engine: an emergency window
+        // releases every package the guardrail could ever have suspended.
+        val toUnsuspend = fullBlockableSet() + store.getLastSuspended()
         setPackagesSuspendedSafely(toUnsuspend, suspended = false)
     }
 
-    private suspend fun computeSuspendSet(allowlist: Set<String>? = null): Set<String> =
+    /** Every non-protected launchable package, ignoring allowlist and engine state. */
+    private fun fullBlockableSet(): Set<String> =
         SuspendPolicy.computeSuspendSet(
             selfPackage = selfPackageName,
             launchablePackages = queryLaunchablePackageNames(),
-            allowlist = allowlist ?: getAllowlist(),
+            allowlist = emptySet(),
             protectedPackages = SuspendPolicy.DEFAULT_PROTECTED_PACKAGES + dynamicProtectedPackages(),
             protectedPrefixes = SuspendPolicy.DEFAULT_PROTECTED_PREFIXES
         )
+
+    private suspend fun computeSuspendSet(allowlist: Set<String>? = null): Set<String> {
+        val effectiveAllowlist = allowlist ?: getAllowlist()
+        val protected = SuspendPolicy.DEFAULT_PROTECTED_PACKAGES + dynamicProtectedPackages()
+        // Hard guardrail first: self, allowlist, protected packages and prefixes
+        // can never be suspended, whatever the engine decides.
+        val candidates = SuspendPolicy.computeSuspendSet(
+            selfPackage = selfPackageName,
+            launchablePackages = queryLaunchablePackageNames(),
+            allowlist = effectiveAllowlist,
+            protectedPackages = protected,
+            protectedPrefixes = SuspendPolicy.DEFAULT_PROTECTED_PREFIXES
+        )
+        if (candidates.isEmpty()) return emptySet()
+        val environment = evaluationEnvironment(effectiveAllowlist, protected)
+        val states = RuleEngine.evaluateAll(environment, candidates.map { CapabilityRef.Package(it) })
+        return EngineSuspendPolicy.computeSuspendSet(candidates, states)
+    }
+
+    /** Builds the engine environment from persisted policy state + current context. */
+    private suspend fun evaluationEnvironment(
+        allowlist: Set<String>,
+        protectedPackages: Set<String> = SuspendPolicy.DEFAULT_PROTECTED_PACKAGES
+    ): EvaluationEnvironment {
+        val now = System.currentTimeMillis()
+        return EvaluationEnvironment(
+            rules = store.getRules(),
+            grants = store.getGrants(),
+            allowlist = allowlist,
+            protectedPackages = protectedPackages,
+            budgetLedger = store.getTimeBudgetLedger(),
+            snapshot = snapshotProvider.snapshot(nowMillis = now, activeMode = store.getActiveMode())
+        )
+    }
 
     private fun queryLaunchablePackageNames(): Set<String> =
         packageManager.queryIntentActivities(launcherQueryIntent(), 0)

@@ -1,5 +1,7 @@
 package com.numenlabs.zerophone.core.context
 
+import kotlinx.serialization.Serializable
+
 /**
  * The ZeroPhone core principle as a domain type: every capability of the phone
  * is always in exactly one of these states.
@@ -15,29 +17,49 @@ sealed interface AvailabilityState {
     /** Temporarily available; will fall back automatically when the grant expires. */
     data class TemporarilyAvailable(val remainingMillis: Long) : AvailabilityState
 
-    /** Available only while the given [ContextSignal]s hold true. */
-    data class Contextual(val requiredSignals: Set<ContextSignal>) : AvailabilityState
+    /** Available only while the given [ContextSignal]s / rule condition hold true. */
+    data class Contextual(
+        val requiredSignals: Set<ContextSignal> = emptySet(),
+        val condition: String = ""
+    ) : AvailabilityState
 
     /** Fully blocked. */
     object Blocked : AvailabilityState
 }
 
+@Serializable
 enum class RestrictionReason { TIME_BUDGET, SUPERVISOR, FOCUS_MODE }
 
 enum class ContextSignal { AT_WORK, AT_HOME, CALENDAR_EVENT_ACTIVE, NIGHT_TIME, CHARGING }
 
 /**
- * Input for the contextual engine (phase 2): what is known about the user's
- * current situation plus the static rules from configuration.
+ * Everything the engine knows about "now": wall clock, local time-of-day for
+ * TimeWindow rules, the active mode and whether a calendar event is running.
+ * minuteOfDay/dayOfWeek are supplied by the caller (local timezone) so the
+ * engine itself stays pure and timezone-free.
  */
 data class ContextSnapshot(
     val nowMillis: Long = 0L,
+    val minuteOfDay: Int = 0,
+    val dayOfWeek: WeekDay = WeekDay.MONDAY,
+    val activeMode: String? = null,
+    val calendarBusy: Boolean = false,
     val activeSignals: Set<ContextSignal> = emptySet()
 )
 
+/** Stable mode identifiers used by rules, persistence and the launcher UI. */
+object ModeIds {
+    const val WORK = "work"
+    const val REST = "rest"
+    const val FOCUS = "focus"
+
+    val ALL = listOf(WORK, REST, FOCUS)
+}
+
 /**
- * Contract for the contextual availability engine. The implementation arrives in
- * phase 2; UI and policy code should depend only on this interface.
+ * Contract for evaluating a single capability against the current situation.
+ * The phase-2 implementation is [RuleEngine]; [SignalContextEngine] remains
+ * as the minimal placeholder contract implementation.
  */
 interface ContextEngine {
     fun evaluate(snapshot: ContextSnapshot): AvailabilityState
