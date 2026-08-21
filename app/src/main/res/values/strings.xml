@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ZeroPhone</string>
+    <string name="device_admin_label">ZeroPhone Admin</string>
+    <string name="device_admin_description">Позволяет ZeroPhone управлять блокировкой приложений (Device Owner).</string>
+</resources>
