@@ -16,4 +16,25 @@
     <string name="emergency_duration_minutes">%1$d мин</string>
     <string name="emergency_duration_custom">Своя длительность (мин)</string>
     <string name="emergency_duration_custom_hint">От 1 до 720 минут</string>
+    <string name="home_mode_label">Режим</string>
+    <string name="mode_work">Работа</string>
+    <string name="mode_rest">Отдых</string>
+    <string name="mode_focus">Фокус</string>
+    <string name="home_next_event">Следующее: %1$s — %2$s</string>
+    <string name="home_no_events">Нет предстоящих событий</string>
+    <string name="home_tasks_title">Задачи</string>
+    <string name="home_no_tasks">Нет задач</string>
+    <string name="home_add_task_hint">Новая задача</string>
+    <string name="home_add_task">Добавить</string>
+    <string name="quick_action_call">Позвонить</string>
+    <string name="quick_action_message">Написать</string>
+    <string name="quick_action_navigate">Доехать</string>
+    <string name="quick_action_pay">Заплатить</string>
+    <string name="quick_action_camera">Камера</string>
+    <plurals name="home_important_unread">
+        <item quantity="one">%1$d сообщение требует ответа</item>
+        <item quantity="few">%1$d сообщения требуют ответа</item>
+        <item quantity="many">%1$d сообщений требуют ответа</item>
+        <item quantity="other">%1$d сообщений требуют ответа</item>
+    </plurals>
 </resources>

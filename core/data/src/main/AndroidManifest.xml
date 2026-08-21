@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Next-event card on the home screen; requested at runtime, the card
+         degrades to an empty state when denied. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
     <application>
 
         <!-- Reads "important unread" notifications for the ZeroLauncher home
