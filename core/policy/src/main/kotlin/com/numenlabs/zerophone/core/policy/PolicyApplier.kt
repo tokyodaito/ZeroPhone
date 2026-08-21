@@ -63,6 +63,13 @@ class PolicyApplier(
 
     suspend fun emergencyDeadline(): Long = store.getEmergencyDeadline()
 
+    /** Configured emergency-window duration (persisted, default 30 minutes). */
+    suspend fun emergencyDurationMillis(): Long = store.getEmergencyDurationMillis()
+
+    suspend fun setEmergencyDuration(durationMillis: Long) {
+        store.setEmergencyDurationMillis(durationMillis)
+    }
+
     fun getLauncherApps(): List<LauncherApp> =
         packageManager.queryIntentActivities(launcherQueryIntent(), 0)
             .asSequence()
@@ -123,9 +130,10 @@ class PolicyApplier(
         }
     }
 
-    suspend fun startEmergencyUnlock(durationMillis: Long = EmergencyWindow.DEFAULT_DURATION_MS): Boolean {
+    suspend fun startEmergencyUnlock(durationMillis: Long? = null): Boolean {
         if (!isDeviceOwner()) return false
-        val deadline = System.currentTimeMillis() + durationMillis
+        val duration = durationMillis ?: store.getEmergencyDurationMillis()
+        val deadline = System.currentTimeMillis() + duration
         store.setEmergencyDeadline(deadline)
         unsuspendBlockables()
         ReLockScheduler.schedule(appContext, deadline)

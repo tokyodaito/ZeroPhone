@@ -2,8 +2,4 @@
     <string name="app_name">ZeroPhone</string>
     <string name="device_admin_label">ZeroPhone Admin</string>
     <string name="device_admin_description">Позволяет ZeroPhone управлять блокировкой приложений (Device Owner).</string>
-    <string name="emergency_dialog_title">Экстренная разблокировка</string>
-    <string name="emergency_dialog_text">Разблокировать все приложения на 30 минут? После этого блокировка будет применена автоматически.</string>
-    <string name="emergency_dialog_confirm">Разблокировать</string>
-    <string name="emergency_dialog_dismiss">Отмена</string>
 </resources>

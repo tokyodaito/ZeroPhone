@@ -37,4 +37,18 @@ class EmergencyWindowTest {
     fun `default duration is thirty minutes`() {
         assertEquals(30L * 60L * 1000L, EmergencyWindow.DEFAULT_DURATION_MS)
     }
+
+    @Test
+    fun `presets are five fifteen thirty sixty minutes`() {
+        assertEquals(listOf(5L, 15L, 30L, 60L), EmergencyWindow.PRESET_MINUTES)
+        assertTrue(EmergencyWindow.PRESET_MINUTES.contains(EmergencyWindow.DEFAULT_DURATION_MS / 60_000L))
+    }
+
+    @Test
+    fun `sanitize clamps custom durations into the supported range`() {
+        assertEquals(EmergencyWindow.MIN_DURATION_MS, EmergencyWindow.sanitizeDurationMillis(0L))
+        assertEquals(EmergencyWindow.MIN_DURATION_MS, EmergencyWindow.sanitizeDurationMillis(-60_000L))
+        assertEquals(7L * 60_000L, EmergencyWindow.sanitizeDurationMillis(7L * 60_000L))
+        assertEquals(EmergencyWindow.MAX_DURATION_MS, EmergencyWindow.sanitizeDurationMillis(Long.MAX_VALUE))
+    }
 }

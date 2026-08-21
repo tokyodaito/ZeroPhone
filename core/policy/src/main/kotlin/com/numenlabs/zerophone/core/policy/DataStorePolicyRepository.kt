@@ -55,6 +55,13 @@ class DataStorePolicyRepository(context: Context) : PolicyRepository {
         dataStore.edit { it[KEY_EMERGENCY_DEADLINE] = deadlineMillis }
     }
 
+    override suspend fun getEmergencyDurationMillis(): Long =
+        dataStore.data.map { it[KEY_EMERGENCY_DURATION] ?: EmergencyWindow.DEFAULT_DURATION_MS }.first()
+
+    override suspend fun setEmergencyDurationMillis(durationMillis: Long) {
+        dataStore.edit { it[KEY_EMERGENCY_DURATION] = durationMillis }
+    }
+
     override suspend fun getLastSuspended(): Set<String> =
         dataStore.data.map { it[KEY_LAST_SUSPENDED] ?: emptySet() }.first()
 
@@ -107,6 +114,7 @@ class DataStorePolicyRepository(context: Context) : PolicyRepository {
     companion object {
         private val KEY_ALLOWLIST = stringSetPreferencesKey("allowlist")
         private val KEY_EMERGENCY_DEADLINE = longPreferencesKey("emergency_deadline")
+        private val KEY_EMERGENCY_DURATION = longPreferencesKey("emergency_duration_ms")
         private val KEY_LAST_SUSPENDED = stringSetPreferencesKey("last_suspended")
         private val KEY_RULES = stringPreferencesKey("rules_json")
         private val KEY_GRANTS = stringPreferencesKey("grants_json")

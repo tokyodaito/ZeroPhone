@@ -9,4 +9,11 @@
     <string name="home_open_allowlist">Allowlist</string>
     <string name="home_emergency_unlock_button">Экстренная разблокировка</string>
     <string name="home_emergency_unlock_active">Разблокировано: %1$s</string>
+    <string name="emergency_dialog_title">Экстренная разблокировка</string>
+    <string name="emergency_dialog_text">Разблокировать все приложения на %1$d мин.? После этого блокировка будет применена автоматически.</string>
+    <string name="emergency_dialog_confirm">Разблокировать</string>
+    <string name="emergency_dialog_dismiss">Отмена</string>
+    <string name="emergency_duration_minutes">%1$d мин</string>
+    <string name="emergency_duration_custom">Своя длительность (мин)</string>
+    <string name="emergency_duration_custom_hint">От 1 до 720 минут</string>
 </resources>

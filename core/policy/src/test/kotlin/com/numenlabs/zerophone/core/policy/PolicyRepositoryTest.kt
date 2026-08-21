@@ -35,6 +35,17 @@ class PolicyRepositoryTest {
     }
 
     @Test
+    fun `emergency duration defaults to thirty minutes`() = runTest {
+        assertEquals(EmergencyWindow.DEFAULT_DURATION_MS, repo.getEmergencyDurationMillis())
+    }
+
+    @Test
+    fun `emergency duration roundtrip persists`() = runTest {
+        repo.setEmergencyDurationMillis(15L * 60_000L)
+        assertEquals(15L * 60_000L, repo.getEmergencyDurationMillis())
+    }
+
+    @Test
     fun `last suspended defaults to empty set`() = runTest {
         assertTrue(repo.getLastSuspended().isEmpty())
     }
