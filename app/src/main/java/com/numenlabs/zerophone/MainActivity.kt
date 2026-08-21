@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.numenlabs.zerophone.core.model.EmergencyWindow
+import com.numenlabs.zerophone.core.policy.DataStorePolicyRepository
 import com.numenlabs.zerophone.core.policy.PolicyApplier
 import com.numenlabs.zerophone.core.ui.theme.ZeroPhoneTheme
 import com.numenlabs.zerophone.feature.allowlist.AllowlistScreen
@@ -45,7 +46,7 @@ private enum class Screen { Home, Allowlist }
 @Composable
 private fun ZeroPhoneApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val applier = remember { PolicyApplier(context) }
+    val applier = remember { PolicyApplier(context, DataStorePolicyRepository(context)) }
     val selfPackage = remember { applier.selfPackageName }
     val scope = rememberCoroutineScope()
 

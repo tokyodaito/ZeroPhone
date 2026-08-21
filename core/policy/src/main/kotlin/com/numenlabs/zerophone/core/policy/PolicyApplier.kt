@@ -16,8 +16,12 @@ import com.numenlabs.zerophone.core.model.EmergencyWindow
  *
  * [reconcile] is the single idempotent entry point used by:
  * app start/resume, alarm fire, boot, allowlist change, emergency-window expiry.
+ * Persistence goes through the [PolicyRepository] interface (Preferences DataStore).
  */
-class PolicyApplier(context: Context) {
+class PolicyApplier(
+    context: Context,
+    private val store: PolicyRepository
+) {
 
     data class LauncherApp(
         val packageName: String,
@@ -36,7 +40,6 @@ class PolicyApplier(context: Context) {
     private val devicePolicyManager =
         appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val packageManager = appContext.packageManager
-    private val store = PolicyStore(appContext)
 
     val selfPackageName: String = appContext.packageName
 
@@ -46,9 +49,9 @@ class PolicyApplier(context: Context) {
         false
     }
 
-    fun getAllowlist(): Set<String> = store.getAllowlist()
+    suspend fun getAllowlist(): Set<String> = store.getAllowlist()
 
-    fun emergencyDeadline(): Long = store.getEmergencyDeadline()
+    suspend fun emergencyDeadline(): Long = store.getEmergencyDeadline()
 
     fun getLauncherApps(): List<LauncherApp> =
         packageManager.queryIntentActivities(launcherQueryIntent(), 0)
@@ -72,8 +75,10 @@ class PolicyApplier(context: Context) {
         appContext.startActivity(launchIntent)
     }
 
-    fun setAllowed(packageName: String, allowed: Boolean) {
-        store.setAllowed(packageName, allowed)
+    suspend fun setAllowed(packageName: String, allowed: Boolean) {
+        val updated = store.getAllowlist().toMutableSet()
+        val changed = if (allowed) updated.add(packageName) else updated.remove(packageName)
+        if (changed) store.setAllowlist(updated)
         reconcile()
     }
 
@@ -82,7 +87,7 @@ class PolicyApplier(context: Context) {
      *  - active window -> keep unlocked, (re-)schedule the re-lock alarm;
      *  - no window / expired window -> clear deadline, cancel alarm, suspend blockables.
      */
-    fun reconcile(): ReconcileResult {
+    suspend fun reconcile(): ReconcileResult {
         if (!isDeviceOwner()) return ReconcileResult.NotDeviceOwner
         val deadline = store.getEmergencyDeadline()
         return when (val window = EmergencyWindow.evaluate(deadline, System.currentTimeMillis())) {
@@ -95,7 +100,7 @@ class PolicyApplier(context: Context) {
         }
     }
 
-    fun startEmergencyUnlock(durationMillis: Long = EmergencyWindow.DEFAULT_DURATION_MS): Boolean {
+    suspend fun startEmergencyUnlock(durationMillis: Long = EmergencyWindow.DEFAULT_DURATION_MS): Boolean {
         if (!isDeviceOwner()) return false
         val deadline = System.currentTimeMillis() + durationMillis
         store.setEmergencyDeadline(deadline)
@@ -104,7 +109,7 @@ class PolicyApplier(context: Context) {
         return true
     }
 
-    private fun lock(): ReconcileResult.Locked {
+    private suspend fun lock(): ReconcileResult.Locked {
         store.setEmergencyDeadline(EmergencyWindow.NONE_DEADLINE)
         ReLockScheduler.cancel(appContext)
         val toSuspend = computeSuspendSet()
@@ -113,16 +118,16 @@ class PolicyApplier(context: Context) {
         return ReconcileResult.Locked(toSuspend)
     }
 
-    private fun unsuspendBlockables() {
+    private suspend fun unsuspendBlockables() {
         val toUnsuspend = computeSuspendSet(allowlist = emptySet()) + store.getLastSuspended()
         setPackagesSuspendedSafely(toUnsuspend, suspended = false)
     }
 
-    private fun computeSuspendSet(allowlist: Set<String> = getAllowlist()): Set<String> =
+    private suspend fun computeSuspendSet(allowlist: Set<String>? = null): Set<String> =
         SuspendPolicy.computeSuspendSet(
             selfPackage = selfPackageName,
             launchablePackages = queryLaunchablePackageNames(),
-            allowlist = allowlist,
+            allowlist = allowlist ?: getAllowlist(),
             protectedPackages = SuspendPolicy.DEFAULT_PROTECTED_PACKAGES + dynamicProtectedPackages(),
             protectedPrefixes = SuspendPolicy.DEFAULT_PROTECTED_PREFIXES
         )

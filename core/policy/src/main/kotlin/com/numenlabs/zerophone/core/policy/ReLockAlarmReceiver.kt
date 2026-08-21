@@ -3,6 +3,7 @@ package com.numenlabs.zerophone.core.policy
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import kotlinx.coroutines.runBlocking
 
 /**
  * Fired by the AlarmManager when the emergency-unlock window ends.
@@ -16,7 +17,12 @@ class ReLockAlarmReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         Thread {
             try {
-                PolicyApplier(context.applicationContext).reconcile()
+                runBlocking {
+                    PolicyApplier(
+                        context.applicationContext,
+                        DataStorePolicyRepository(context.applicationContext)
+                    ).reconcile()
+                }
             } catch (_: Exception) {
                 // Never crash the alarm pipeline; catch-up on next resume/boot covers it.
             } finally {

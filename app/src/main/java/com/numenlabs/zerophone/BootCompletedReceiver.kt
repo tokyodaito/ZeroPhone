@@ -3,7 +3,9 @@ package com.numenlabs.zerophone
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.numenlabs.zerophone.core.policy.DataStorePolicyRepository
 import com.numenlabs.zerophone.core.policy.PolicyApplier
+import kotlinx.coroutines.runBlocking
 
 /**
  * After a reboot:
@@ -19,7 +21,12 @@ class BootCompletedReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         Thread {
             try {
-                PolicyApplier(context.applicationContext).reconcile()
+                runBlocking {
+                    PolicyApplier(
+                        context.applicationContext,
+                        DataStorePolicyRepository(context.applicationContext)
+                    ).reconcile()
+                }
             } catch (_: Exception) {
                 // Catch-up on app resume covers failures.
             } finally {
