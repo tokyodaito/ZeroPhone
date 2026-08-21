@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <!-- Reads "important unread" notifications for the ZeroLauncher home
+             screen. Enabled by the user in system notification-access settings
+             (BIND_NOTIFICATION_LISTENER_SERVICE); works without it too — the
+             home screen then simply shows no unread counter. -->
+        <service
+            android:name=".notifications.ZeroNotificationListenerService"
+            android:exported="true"
+            android:label="@string/notification_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>

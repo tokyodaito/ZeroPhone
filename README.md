@@ -9,7 +9,10 @@ ZeroPhone — Android-приложение (Kotlin + Jetpack Compose), кото�
 - **Home Launcher.** `MainActivity` объявлена с `CATEGORY_HOME` + `CATEGORY_DEFAULT` (и `MAIN/LAUNCHER`), при нажатии кнопки «Домой» система предлагает выбрать ZeroPhone домашним экраном. На экране отображается сетка launchable-приложений **только из allowlist**.
 - **Allowlist.** Экран управления белым списком: список всех launchable-приложений с чекбоксами (разрешить/заблокировать) и поиском. Изменения применяются немедленно.
 - **Блокировка.** Все установленные launchable-приложения вне allowlist блокируются через `DevicePolicyManager.setPackagesSuspended(packages, true)`. Политика применяется при старте, при изменении allowlist, по `BOOT_COMPLETED` и после окончания emergency-окна. Никогда не блокируются: сам ZeroPhone (`com.numenlabs.zerophone`), системные критические пакеты (`com.android.phone`, `com.android.dialer`, `com.android.settings`, `com.android.systemui`, `com.android.packageinstaller`/`installer` и др.), активный IME, лаунчер по умолчанию, а также пакеты, чья блокировка бросает исключение.
-- **Emergency Unlock.** Кнопка «Экстренная разблокировка на 30 минут»: снимает блокировку со всех приложений, показывает обратный отсчёт и автоматически повторно блокирует (re-lock) через 30 минут (AlarmManager, `RTC_WAKEUP`). Окно переживает перезагрузку: `BOOT_COMPLETED`-receiver переприменяет политику и пере-планирует re-lock, если окно активно (deadline хранится в persistence).
+- **Emergency Unlock.** Кнопка «Экстренная разблокировка на 30 минут»: снимает блокировку со всех приложений, показывает обратный отсчёт и автоматически повторно блокирует (re-lock) через 30 минут (AlarmManager, `RTC_WAKEUP`). Окно переживает перезагрузку: `BOOT_COMPLETED`-receiver переприменяет политику и пере-планирует re-lock, если окно активно (deadline хранится в persistence). Длительность окна настраивается (пресеты 5/15/30/60 мин или своя).
+- **Контекстный движок.** Каждая возможность (пакет или логическая capability) резолвится движком ровно в одно из пяти состояний: `AVAILABLE` / `RESTRICTED` / `TEMPORARILY_AVAILABLE` / `CONTEXTUAL` / `BLOCKED`. Решения переводятся в `setPackagesSuspended` только для `BLOCKED`; защищённые `SuspendPolicy` пакеты никогда не блокируются. Правила конфликтуют детерминированно (специфичность → приоритет → id); гранты («временно доступна») истекают автоматически с re-lock через AlarmManager; ограниченные возможности получают дневной бюджет времени.
+- **Режимы.** Именованные профили WORK / REST / FOCUS с сидами правил (seed только ограничивает логические capabilities и никогда не расширяет пакетывые дефолты); переключение режима с главного экрана мгновенно пере-применяет политику.
+- **Источники данных.** Календарь — `CalendarProvider` (runtime-разрешение `READ_CALENDAR`; без него — пустое состояние); задачи/напоминания — собственный локальный стор (DataStore); важные непрочитанные — `NotificationListenerService` с чистым Kotlin-фильтром важности (пользовательский список приоритетных пакетов + важность канала ≥ HIGH).
 
 ### Условия работы
 
@@ -20,9 +23,10 @@ ZeroPhone — Android-приложение (Kotlin + Jetpack Compose), кото�
 ## Технические требования
 
 - Gradle-мульти-модуль (монорепа, растёт по фазам):
-  - `:core:model` — чистый Kotlin без Android-зависимостей: доменные типы (emergency-окна и др.);
+  - `:core:model` — чистый Kotlin без Android-зависимостей: доменные типы (emergency-окна, задачи, события календаря);
   - `:core:policy` — политика блокировки: `PolicyApplier`, `SuspendPolicy`, re-lock scheduling, Android-адаптеры `DevicePolicyManager`/`AlarmManager`;
-  - `:core:context` — контракты контекстного движка (состояния доступности; реализация — фаза 2);
+  - `:core:context` — контекстный движок (пять состояний доступности, правила, гранты, бюджеты, каталог режимов WORK/REST/FOCUS);
+  - `:core:data` — источники данных: календарь (`CalendarProvider`), локальный стор задач (DataStore), важные непрочитанные уведомления (`NotificationListenerService` + чистый фильтр важности), Android-реализация `SnapshotProvider`;
   - `:core:ui` — Compose-тема и общие UI-зависимости;
   - `:feature:home`, `:feature:allowlist` — экраны;
   - `:app` — launcher-activity (`CATEGORY_HOME`), ресиверы `BOOT_COMPLETED`/AlarmManager, сборка APK. `applicationId` / `namespace` — `com.numenlabs.zerophone`.
