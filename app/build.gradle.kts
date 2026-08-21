@@ -52,6 +52,12 @@ configurations.all {
 }
 
 dependencies {
+    implementation(projects.core.model)
+    implementation(projects.core.policy)
+    implementation(projects.core.ui)
+    implementation(projects.feature.home)
+    implementation(projects.feature.allowlist)
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

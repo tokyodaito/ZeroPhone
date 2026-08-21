@@ -14,6 +14,8 @@ pluginManagement {
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
+
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -23,4 +25,11 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "ZeroPhone"
+
 include(":app")
+include(":core:model")
+include(":core:context")
+include(":core:policy")
+include(":core:ui")
+include(":feature:home")
+include(":feature:allowlist")

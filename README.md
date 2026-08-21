@@ -19,7 +19,13 @@ ZeroPhone — Android-приложение (Kotlin + Jetpack Compose), кото�
 
 ## Технические требования
 
-- Один модуль `:app`, `applicationId` / `namespace` — `com.numenlabs.zerophone`.
+- Gradle-мульти-модуль (монорепа, растёт по фазам):
+  - `:core:model` — чистый Kotlin без Android-зависимостей: доменные типы (emergency-окна и др.);
+  - `:core:policy` — политика блокировки: `PolicyApplier`, `SuspendPolicy`, re-lock scheduling, Android-адаптеры `DevicePolicyManager`/`AlarmManager`;
+  - `:core:context` — контракты контекстного движка (состояния доступности; реализация — фаза 2);
+  - `:core:ui` — Compose-тема и общие UI-зависимости;
+  - `:feature:home`, `:feature:allowlist` — экраны;
+  - `:app` — launcher-activity (`CATEGORY_HOME`), ресиверы `BOOT_COMPLETED`/AlarmManager, сборка APK. `applicationId` / `namespace` — `com.numenlabs.zerophone`.
 - Kotlin + Jetpack Compose (Compose BOM 2026.02.01), AGP 9.2.1.
 - `minSdk 24`, `targetSdk 36`, `compileSdk 36` (minorApiLevel 1).
 - Новые зависимости добавляются только через `gradle/libs.versions.toml`.
@@ -31,8 +37,8 @@ ZeroPhone — Android-приложение (Kotlin + Jetpack Compose), кото�
 # Сборка debug-APK
 ./gradlew assembleDebug
 
-# Unit-тесты (логика allowlist / защищённых пакетов)
-./gradlew testDebugUnitTest
+# Unit-тесты (Android-модули: логика allowlist / защищённых пакетов; JVM-модули :core:model, :core:context)
+./gradlew testDebugUnitTest :core:model:test :core:context:test
 ```
 
 APK собирается в `app/build/outputs/apk/debug/app-debug.apk`.

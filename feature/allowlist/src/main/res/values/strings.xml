@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="allowlist_back">Назад</string>
+    <string name="allowlist_title">Управление allowlist</string>
+    <string name="allowlist_search_hint">Поиск приложения</string>
+    <string name="allowlist_not_device_owner">Не Device Owner: изменения сохраняются, но блокировка не применяется.</string>
+    <string name="allowlist_empty">Нет приложений</string>
+    <string name="allowlist_no_results">Ничего не найдено</string>
+</resources>

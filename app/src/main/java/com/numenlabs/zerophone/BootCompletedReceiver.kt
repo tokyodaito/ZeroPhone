@@ -3,7 +3,7 @@ package com.numenlabs.zerophone
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.numenlabs.zerophone.policy.PolicyApplier
+import com.numenlabs.zerophone.core.policy.PolicyApplier
 
 /**
  * After a reboot:
