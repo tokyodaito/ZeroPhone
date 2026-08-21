@@ -36,4 +36,12 @@ object SuspendPolicy {
             .filter { it !in protectedPackages }
             .filter { pkg -> protectedPrefixes.none { prefix -> pkg.startsWith(prefix) } }
             .toSet()
+
+    /**
+     * Packages we suspended earlier that must be released now: only members of the
+     * previous suspend set that left the new one (e.g. just allowlisted) — never
+     * packages the policy did not suspend itself.
+     */
+    fun computeReleaseSet(lastSuspended: Set<String>, suspendSet: Set<String>): Set<String> =
+        lastSuspended - suspendSet
 }

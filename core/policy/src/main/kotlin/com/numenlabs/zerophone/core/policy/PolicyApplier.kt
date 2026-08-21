@@ -113,6 +113,10 @@ class PolicyApplier(
         store.setEmergencyDeadline(EmergencyWindow.NONE_DEADLINE)
         ReLockScheduler.cancel(appContext)
         val toSuspend = computeSuspendSet()
+        // Release packages we suspended earlier that left the suspend set
+        // (e.g. just allowlisted) so allowlist changes unblock immediately.
+        val toRelease = SuspendPolicy.computeReleaseSet(store.getLastSuspended(), toSuspend)
+        setPackagesSuspendedSafely(toRelease, suspended = false)
         setPackagesSuspendedSafely(toSuspend, suspended = true)
         store.setLastSuspended(toSuspend)
         return ReconcileResult.Locked(toSuspend)

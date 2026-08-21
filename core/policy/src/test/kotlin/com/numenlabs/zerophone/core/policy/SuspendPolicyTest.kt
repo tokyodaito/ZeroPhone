@@ -181,4 +181,36 @@ class SuspendPolicyTest {
         assertEquals(compute(), compute())
         assertEquals(compute(allowlist = setOf("com.whatsapp")), compute(allowlist = setOf("com.whatsapp")))
     }
+
+    @Test
+    fun `release set contains only previously suspended packages that left the suspend set`() {
+        val lastSuspended = setOf("com.whatsapp", "org.telegram.messenger", "com.example.game")
+        val suspendSet = setOf("com.whatsapp")
+        assertEquals(setOf("org.telegram.messenger", "com.example.game"), SuspendPolicy.computeReleaseSet(lastSuspended, suspendSet))
+    }
+
+    @Test
+    fun `release set is empty when nothing changed`() {
+        val suspendSet = setOf("com.whatsapp", "com.example.game")
+        assertTrue(SuspendPolicy.computeReleaseSet(suspendSet, suspendSet).isEmpty())
+    }
+
+    @Test
+    fun `release set never includes packages we did not suspend before`() {
+        val lastSuspended = setOf("com.whatsapp")
+        val suspendSet = setOf("com.example.game")
+        assertEquals(setOf("com.whatsapp"), SuspendPolicy.computeReleaseSet(lastSuspended, suspendSet))
+    }
+
+    @Test
+    fun `release set is empty when nothing was suspended before`() {
+        assertTrue(SuspendPolicy.computeReleaseSet(emptySet(), setOf("com.whatsapp")).isEmpty())
+    }
+
+    @Test
+    fun `allowlisting a previously suspended package releases exactly it`() {
+        val suspendSetBefore = compute() // com.whatsapp, org.telegram.messenger, com.example.game
+        val suspendSetAfter = compute(allowlist = setOf("com.whatsapp"))
+        assertEquals(setOf("com.whatsapp"), SuspendPolicy.computeReleaseSet(suspendSetBefore, suspendSetAfter))
+    }
 }
