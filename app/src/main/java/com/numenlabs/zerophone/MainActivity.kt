@@ -30,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import javax.inject.Inject
+import kotlin.collections.filter
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -82,7 +83,10 @@ private fun ZeroPhoneApp(applier: PolicyApplier) {
         }
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        applier.ensureDefaultRules()
+        refresh()
+    }
 
     // Catch-up on every resume: if the (possibly inexact) alarm fired late or was missed,
     // the persisted-deadline check inside reconcile re-locks immediately.

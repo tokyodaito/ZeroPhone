@@ -57,6 +57,7 @@ configurations.all {
 dependencies {
     implementation(projects.core.model)
     implementation(projects.core.policy)
+    implementation(projects.core.data)
     implementation(projects.core.ui)
     implementation(projects.feature.home)
     implementation(projects.feature.allowlist)

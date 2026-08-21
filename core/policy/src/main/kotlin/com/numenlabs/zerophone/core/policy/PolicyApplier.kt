@@ -11,8 +11,11 @@ import com.numenlabs.zerophone.ZeroDeviceAdminReceiver
 import com.numenlabs.zerophone.core.context.AvailabilityState
 import com.numenlabs.zerophone.core.context.CapabilityRef
 import com.numenlabs.zerophone.core.context.EvaluationEnvironment
+import com.numenlabs.zerophone.core.context.ManualGrant
+import com.numenlabs.zerophone.core.context.ModeCatalog
 import com.numenlabs.zerophone.core.context.RuleEngine
 import com.numenlabs.zerophone.core.context.SnapshotProvider
+import com.numenlabs.zerophone.core.context.TimeBudgetLedger
 import com.numenlabs.zerophone.core.model.EmergencyWindow
 
 /**
@@ -108,6 +111,41 @@ class PolicyApplier(
         reconcile()
     }
 
+    /**
+     * Seeds the mode-catalog rules on first use. Idempotent: an existing
+     * (possibly user-configured) ruleset is never overwritten.
+     */
+    suspend fun ensureDefaultRules() {
+        if (store.getRules().isEmpty()) store.setRules(ModeCatalog.seedRules())
+    }
+
+    /**
+     * Temporary per-capability unlock ("временно доступна"): persists a
+     * [ManualGrant] that outranks rules until its deadline, re-evaluates the
+     * policy immediately and re-uses the re-lock alarm so the grant's expiry
+     * re-applies the suspend set automatically. Works without Device Owner too
+     * (the grant still resolves in [availabilityOf]) — it just has nothing to
+     * enforce on the suspend side, same safe no-op as everywhere else.
+     */
+    suspend fun grantCapability(capabilityId: String, durationMillis: Long) {
+        val now = System.currentTimeMillis()
+        val deadline = now + durationMillis
+        val grants = store.getGrants().filter { it.isActive(now) } + ManualGrant(capabilityId, deadline)
+        store.setGrants(grants)
+        scheduleNextDeadline(now, deadline)
+        reconcile()
+    }
+
+    /** Records usage of a capability against its daily time budget. */
+    suspend fun recordCapabilityUsage(capabilityId: String, usedMillis: Long) {
+        if (usedMillis <= 0L) return
+        val now = System.currentTimeMillis()
+        val ledger = store.getTimeBudgetLedger()
+        store.setTimeBudgetLedger(
+            ledger.withUsage(capabilityId, TimeBudgetLedger.epochDayOf(now), usedMillis)
+        )
+    }
+
     /** Current engine state for an arbitrary capability (packages and logical). */
     suspend fun availabilityOf(capability: CapabilityRef): AvailabilityState =
         RuleEngine.evaluate(evaluationEnvironment(getAllowlist()), capability)
@@ -119,6 +157,7 @@ class PolicyApplier(
      */
     suspend fun reconcile(): ReconcileResult {
         if (!isDeviceOwner()) return ReconcileResult.NotDeviceOwner
+        pruneExpiredGrants()
         val deadline = store.getEmergencyDeadline()
         return when (val window = EmergencyWindow.evaluate(deadline, System.currentTimeMillis())) {
             is EmergencyWindow.Active -> {
@@ -133,11 +172,32 @@ class PolicyApplier(
     suspend fun startEmergencyUnlock(durationMillis: Long? = null): Boolean {
         if (!isDeviceOwner()) return false
         val duration = durationMillis ?: store.getEmergencyDurationMillis()
-        val deadline = System.currentTimeMillis() + duration
+        val now = System.currentTimeMillis()
+        val deadline = now + duration
         store.setEmergencyDeadline(deadline)
         unsuspendBlockables()
-        ReLockScheduler.schedule(appContext, deadline)
+        scheduleNextDeadline(now, deadline)
         return true
+    }
+
+    /**
+     * Schedules the re-lock alarm at the earliest of the candidate deadline and
+     * any active emergency/grant deadline, so no re-lock is delayed by another.
+     * The alarm's reconcile is idempotent and re-schedules whatever is still
+     * active when it fires.
+     */
+    private suspend fun scheduleNextDeadline(now: Long, candidateDeadline: Long) {
+        val emergencyDeadline = store.getEmergencyDeadline().takeIf { it > now }
+        val next = listOfNotNull(candidateDeadline, emergencyDeadline).min()
+        if (next > now) ReLockScheduler.schedule(appContext, next)
+    }
+
+    /** Drops expired grants so the persisted list only keeps live state. */
+    private suspend fun pruneExpiredGrants() {
+        val now = System.currentTimeMillis()
+        val grants = store.getGrants()
+        val active = grants.filter { it.isActive(now) }
+        if (active.size != grants.size) store.setGrants(active)
     }
 
     private suspend fun lock(): ReconcileResult.Locked {
