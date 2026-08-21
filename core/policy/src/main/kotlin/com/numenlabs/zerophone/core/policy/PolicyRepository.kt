@@ -4,6 +4,7 @@ import com.numenlabs.zerophone.core.context.ManualGrant
 import com.numenlabs.zerophone.core.context.ModeIds
 import com.numenlabs.zerophone.core.context.Rule
 import com.numenlabs.zerophone.core.context.TimeBudgetLedger
+import com.numenlabs.zerophone.core.model.EmergencyWindow
 
 /**
  * Structured persistence contract for all ZeroPhone policy state:
@@ -26,6 +27,11 @@ interface PolicyRepository {
     suspend fun getEmergencyDeadline(): Long
 
     suspend fun setEmergencyDeadline(deadlineMillis: Long)
+
+    /** Configured emergency-window duration (default 30 minutes). */
+    suspend fun getEmergencyDurationMillis(): Long
+
+    suspend fun setEmergencyDurationMillis(durationMillis: Long)
 
     suspend fun getLastSuspended(): Set<String>
 
@@ -56,6 +62,7 @@ class InMemoryPolicyRepository : PolicyRepository {
 
     private var allowlist: Set<String> = emptySet()
     private var emergencyDeadline: Long = 0L
+    private var emergencyDurationMillis: Long = EmergencyWindow.DEFAULT_DURATION_MS
     private var lastSuspended: Set<String> = emptySet()
     private var rules: List<Rule> = emptyList()
     private var grants: List<ManualGrant> = emptyList()
@@ -72,6 +79,12 @@ class InMemoryPolicyRepository : PolicyRepository {
 
     override suspend fun setEmergencyDeadline(deadlineMillis: Long) {
         emergencyDeadline = deadlineMillis
+    }
+
+    override suspend fun getEmergencyDurationMillis(): Long = emergencyDurationMillis
+
+    override suspend fun setEmergencyDurationMillis(durationMillis: Long) {
+        emergencyDurationMillis = durationMillis
     }
 
     override suspend fun getLastSuspended(): Set<String> = lastSuspended.toSet()

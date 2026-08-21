@@ -4,9 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -16,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.compose.NavHost
@@ -26,6 +22,7 @@ import com.numenlabs.zerophone.core.model.EmergencyWindow
 import com.numenlabs.zerophone.core.policy.PolicyApplier
 import com.numenlabs.zerophone.core.ui.theme.ZeroPhoneTheme
 import com.numenlabs.zerophone.feature.allowlist.AllowlistScreen
+import com.numenlabs.zerophone.feature.home.EmergencyUnlockDialog
 import com.numenlabs.zerophone.feature.home.HomeScreen
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +65,7 @@ private fun ZeroPhoneApp(applier: PolicyApplier) {
     var allowlist by remember { mutableStateOf<Set<String>>(emptySet()) }
     var deviceOwner by remember { mutableStateOf(false) }
     var deadline by remember { mutableStateOf(EmergencyWindow.NONE_DEADLINE) }
+    var emergencyDuration by remember { mutableStateOf(EmergencyWindow.DEFAULT_DURATION_MS) }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var showEmergencyDialog by remember { mutableStateOf(false) }
 
@@ -76,6 +74,7 @@ private fun ZeroPhoneApp(applier: PolicyApplier) {
             applier.reconcile()
             deviceOwner = applier.isDeviceOwner()
             deadline = applier.emergencyDeadline()
+            emergencyDuration = applier.emergencyDurationMillis()
             allowlist = applier.getAllowlist()
             if (reloadApps) {
                 apps = applier.getLauncherApps()
@@ -109,26 +108,18 @@ private fun ZeroPhoneApp(applier: PolicyApplier) {
     }
 
     if (showEmergencyDialog) {
-        AlertDialog(
-            onDismissRequest = { showEmergencyDialog = false },
-            title = { Text(stringResource(R.string.emergency_dialog_title)) },
-            text = {
-                Text(stringResource(R.string.emergency_dialog_text))
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showEmergencyDialog = false
-                    scope.launch(Dispatchers.Default) {
-                        applier.startEmergencyUnlock()
-                        refresh(reloadApps = false)
-                    }
-                }) { Text(stringResource(R.string.emergency_dialog_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEmergencyDialog = false }) {
-                    Text(stringResource(R.string.emergency_dialog_dismiss))
+        EmergencyUnlockDialog(
+            currentDurationMillis = emergencyDuration,
+            onConfirm = { durationMillis ->
+                showEmergencyDialog = false
+                scope.launch(Dispatchers.Default) {
+                    applier.setEmergencyDuration(durationMillis)
+                    emergencyDuration = durationMillis
+                    applier.startEmergencyUnlock(durationMillis)
+                    refresh(reloadApps = false)
                 }
-            }
+            },
+            onDismiss = { showEmergencyDialog = false }
         )
     }
 
