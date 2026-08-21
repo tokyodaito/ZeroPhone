@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_title">ZeroPhone</string>
+    <string name="home_device_owner_active">Device Owner: блокировка активна</string>
+    <string name="home_device_owner_inactive">Не Device Owner: блокировка отключена</string>
+    <string name="home_not_device_owner_hint">ZeroPhone не назначен Device Owner — приложения не блокируются. Инструкция по provisioning — в README.md.</string>
+    <string name="home_emergency_active_banner">Экстренная разблокировка: повторная блокировка через %1$s</string>
+    <string name="home_no_allowed_apps">Нет разрешённых приложений. Откройте управление allowlist и отметьте нужные.</string>
+    <string name="home_open_allowlist">Allowlist</string>
+    <string name="home_emergency_unlock_button">Экстренная разблокировка</string>
+    <string name="home_emergency_unlock_active">Разблокировано: %1$s</string>
+</resources>
