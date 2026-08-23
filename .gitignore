@@ -16,3 +16,6 @@ local.properties
 
 # Gradle build directories (all modules)
 **/build/
+
+# Kotlin 2.x session/build data
+.kotlin/
