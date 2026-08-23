@@ -70,6 +70,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var notificationSettings: NotificationSettingsRepository
 
+    @Inject
+    lateinit var syncEngine: com.numenlabs.zerophone.core.data.sync.PhoneSyncEngine
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -81,6 +84,7 @@ class MainActivity : ComponentActivity() {
                     taskRepository = taskRepository,
                     notificationsStore = notificationsStore,
                     notificationSettings = notificationSettings,
+                    syncEngine = syncEngine,
                     onQuickActionIntent = ::launchQuickAction
                 )
             }
@@ -90,7 +94,8 @@ class MainActivity : ComponentActivity() {
     /**
      * Intent templates behind the quick actions. Every action resolves to a
      * plain system intent (dialer / messenger / maps / wallet / camera) —
-     * the engine has already decided the action is allowed.
+     * the engine has already decided the action is allowed. Send-to-PC is
+     * handled in the Compose layer (URL dialog), never here.
      */
     private fun launchQuickAction(action: QuickAction) {
         val intent = when (action) {
@@ -103,6 +108,7 @@ class MainActivity : ComponentActivity() {
                 packageManager.getLaunchIntentForPackage(WALLET_PACKAGE)
                     ?: Intent(Settings.ACTION_NFC_SETTINGS)
             QuickAction.CAMERA -> Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
+            QuickAction.SEND_TO_PC -> return
         }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val resolved = try {
             packageManager.resolveActivity(intent, 0) != null
@@ -146,6 +152,7 @@ private fun ZeroPhoneApp(
     taskRepository: TaskRepository,
     notificationsStore: ImportantNotificationsStore,
     notificationSettings: NotificationSettingsRepository,
+    syncEngine: com.numenlabs.zerophone.core.data.sync.PhoneSyncEngine,
     onQuickActionIntent: (QuickAction) -> Unit
 ) {
     val context = LocalContext.current
@@ -173,6 +180,12 @@ private fun ZeroPhoneApp(
         ImportantNotificationFilter(priorityPackages).countImportant(activeNotifications)
     }
 
+    // Phone-side sync: the engine keeps the policy store synchronized and
+    // re-runs the applier whenever a remote change landed.
+    LaunchedEffect(Unit) {
+        syncEngine.start(this)
+    }
+
     fun refresh(reloadApps: Boolean = true) {
         scope.launch(Dispatchers.Default) {
             applier.reconcile()
@@ -182,7 +195,11 @@ private fun ZeroPhoneApp(
             allowlist = applier.getAllowlist()
             activeMode = applier.getActiveMode()
             actionStates = QuickAction.entries.associateWith { action ->
-                applier.availabilityOf(CapabilityRef.Logical(action.capabilityId))
+                if (action == QuickAction.SEND_TO_PC) {
+                    AvailabilityState.Available
+                } else {
+                    applier.availabilityOf(CapabilityRef.Logical(action.capabilityId))
+                }
             }
             nextEvent = calendarSource.nextEvent(nowMillis = System.currentTimeMillis())
             tasks = taskRepository.getTasks()
@@ -282,6 +299,11 @@ private fun ZeroPhoneApp(
                     }
                 },
                 onQuickAction = onQuickActionIntent,
+                onSendToPc = { url ->
+                    scope.launch(Dispatchers.Default) {
+                        runCatching { syncEngine.sendLink(url) }
+                    }
+                },
                 onAddTask = { title ->
                     scope.launch(Dispatchers.Default) {
                         taskRepository.addTask(title)

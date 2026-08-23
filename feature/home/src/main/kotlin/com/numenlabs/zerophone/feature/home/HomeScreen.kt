@@ -73,10 +73,12 @@ fun HomeScreen(
     onEmergencyUnlock: () -> Unit,
     onSetMode: (mode: String) -> Unit,
     onQuickAction: (action: QuickAction) -> Unit,
+    onSendToPc: (url: String) -> Unit,
     onAddTask: (title: String) -> Unit,
     onToggleTask: (id: String, done: Boolean) -> Unit
 ) {
     val context = LocalContext.current
+    var showSendToPcDialog by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -144,7 +146,12 @@ fun HomeScreen(
             onToggleTask = onToggleTask
         )
         Spacer(Modifier.height(8.dp))
-        QuickActionsRow(actionStates = actionStates, onQuickAction = onQuickAction)
+        QuickActionsRow(
+            actionStates = actionStates,
+            onQuickAction = { action ->
+                if (action == QuickAction.SEND_TO_PC) showSendToPcDialog = true else onQuickAction(action)
+            }
+        )
         Spacer(Modifier.height(8.dp))
         val visibleApps = apps.filter {
             it.packageName == selfPackage || allowlist.contains(it.packageName)
@@ -207,6 +214,58 @@ fun HomeScreen(
                     },
                     maxLines = 2
                 )
+            }
+        }
+    }
+
+    if (showSendToPcDialog) {
+        SendToPcDialog(
+            onSend = { url ->
+                showSendToPcDialog = false
+                onSendToPc(url)
+            },
+            onDismiss = { showSendToPcDialog = false }
+        )
+    }
+}
+
+/** "Отправить на ПК": URL input handed to the sync wiring, never auto-sent. */
+@Composable
+private fun SendToPcDialog(
+    onSend: (url: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var url by remember { mutableStateOf("") }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = MaterialTheme.shapes.large
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = stringResource(R.string.send_to_pc_dialog_title),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.send_to_pc_dialog_hint)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.send_to_pc_dialog_cancel))
+                    }
+                    Button(
+                        onClick = { onSend(url.trim()) },
+                        enabled = url.startsWith("http://") || url.startsWith("https://")
+                    ) {
+                        Text(stringResource(R.string.send_to_pc_dialog_send))
+                    }
+                }
             }
         }
     }
@@ -367,6 +426,7 @@ private fun QuickActionsRow(
                             QuickAction.NAVIGATE -> R.string.quick_action_navigate
                             QuickAction.PAY -> R.string.quick_action_pay
                             QuickAction.CAMERA -> R.string.quick_action_camera
+                            QuickAction.SEND_TO_PC -> R.string.quick_action_send_to_pc
                         }
                     )
                 )
