@@ -15,6 +15,9 @@ object SyncEndpoints {
     const val STATE = "/api/v1/state"
     const val WEBSOCKET = "/api/v1/ws"
     const val PAIRING_CLAIM = "/api/v1/pairing/claim"
+
+    /** "Send to PC": the phone POSTs a link, the server relays it to desktops. */
+    const val LINK = "/api/v1/link"
     const val AUTH_ROTATE = "/api/v1/auth/rotate"
     const val AUTH_TOKEN = "/api/v1/auth/token"
 
