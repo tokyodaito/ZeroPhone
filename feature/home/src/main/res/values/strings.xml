@@ -23,6 +23,8 @@
     <string name="home_next_event">Следующее: %1$s — %2$s</string>
     <string name="home_no_events">Нет предстоящих событий</string>
     <string name="home_tasks_title">Задачи</string>
+    <string name="home_quick_actions_section">Быстрые действия</string>
+    <string name="home_apps_section">Приложения</string>
     <string name="home_no_tasks">Нет задач</string>
     <string name="home_add_task_hint">Новая задача</string>
     <string name="home_add_task">Добавить</string>

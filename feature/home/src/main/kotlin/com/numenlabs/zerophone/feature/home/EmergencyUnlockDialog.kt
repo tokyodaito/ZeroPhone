@@ -1,13 +1,20 @@
 package com.numenlabs.zerophone.feature.home
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,11 +23,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.numenlabs.zerophone.core.model.EmergencyWindow
+import com.numenlabs.zerophone.core.ui.icon.ZeroIcons
 
 /**
  * Emergency-unlock dialog with a configurable window duration: presets
@@ -50,15 +59,34 @@ fun EmergencyUnlockDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = ZeroIcons.Timer,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        },
         title = { Text(stringResource(R.string.emergency_dialog_title)) },
         text = {
-            Column {
+            Column(
+                modifier = Modifier.animateContentSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(stringResource(R.string.emergency_dialog_text, effectiveMillis / 60_000L))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     EmergencyWindow.PRESET_MINUTES.forEach { minutes ->
                         FilterChip(
@@ -80,9 +108,7 @@ fun EmergencyUnlockDialog(
                     supportingText = {
                         Text(stringResource(R.string.emergency_duration_custom_hint))
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         },

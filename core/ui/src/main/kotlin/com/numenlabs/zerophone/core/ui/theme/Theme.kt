@@ -11,32 +11,92 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = BrandPrimaryDark,
+    onPrimary = BrandOnPrimaryDark,
+    primaryContainer = BrandPrimaryContainerDark,
+    onPrimaryContainer = BrandOnPrimaryContainerDark,
+    inversePrimary = BrandInversePrimaryDark,
+    secondary = BrandSecondaryDark,
+    onSecondary = BrandOnSecondaryDark,
+    secondaryContainer = BrandSecondaryContainerDark,
+    onSecondaryContainer = BrandOnSecondaryContainerDark,
+    tertiary = BrandTertiaryDark,
+    onTertiary = BrandOnTertiaryDark,
+    tertiaryContainer = BrandTertiaryContainerDark,
+    onTertiaryContainer = BrandOnTertiaryContainerDark,
+    background = BrandBackgroundDark,
+    onBackground = BrandOnBackgroundDark,
+    surface = BrandSurfaceDark,
+    onSurface = BrandOnSurfaceDark,
+    surfaceVariant = BrandSurfaceVariantDark,
+    onSurfaceVariant = BrandOnSurfaceVariantDark,
+    surfaceDim = BrandSurfaceDimDark,
+    surfaceBright = BrandSurfaceBrightDark,
+    surfaceContainerLowest = BrandSurfaceContainerLowestDark,
+    surfaceContainerLow = BrandSurfaceContainerLowDark,
+    surfaceContainer = BrandSurfaceContainerDark,
+    surfaceContainerHigh = BrandSurfaceContainerHighDark,
+    surfaceContainerHighest = BrandSurfaceContainerHighestDark,
+    inverseSurface = BrandInverseSurfaceDark,
+    inverseOnSurface = BrandInverseOnSurfaceDark,
+    outline = BrandOutlineDark,
+    outlineVariant = BrandOutlineVariantDark,
+    error = BrandErrorDark,
+    onError = BrandOnErrorDark,
+    errorContainer = BrandErrorContainerDark,
+    onErrorContainer = BrandOnErrorContainerDark
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    primary = BrandPrimaryLight,
+    onPrimary = BrandOnPrimaryLight,
+    primaryContainer = BrandPrimaryContainerLight,
+    onPrimaryContainer = BrandOnPrimaryContainerLight,
+    inversePrimary = BrandInversePrimaryLight,
+    secondary = BrandSecondaryLight,
+    onSecondary = BrandOnSecondaryLight,
+    secondaryContainer = BrandSecondaryContainerLight,
+    onSecondaryContainer = BrandOnSecondaryContainerLight,
+    tertiary = BrandTertiaryLight,
+    onTertiary = BrandOnTertiaryLight,
+    tertiaryContainer = BrandTertiaryContainerLight,
+    onTertiaryContainer = BrandOnTertiaryContainerLight,
+    background = BrandBackgroundLight,
+    onBackground = BrandOnBackgroundLight,
+    surface = BrandSurfaceLight,
+    onSurface = BrandOnSurfaceLight,
+    surfaceVariant = BrandSurfaceVariantLight,
+    onSurfaceVariant = BrandOnSurfaceVariantLight,
+    surfaceDim = BrandSurfaceDimLight,
+    surfaceBright = BrandSurfaceBrightLight,
+    surfaceContainerLowest = BrandSurfaceContainerLowestLight,
+    surfaceContainerLow = BrandSurfaceContainerLowLight,
+    surfaceContainer = BrandSurfaceContainerLight,
+    surfaceContainerHigh = BrandSurfaceContainerHighLight,
+    surfaceContainerHighest = BrandSurfaceContainerHighestLight,
+    inverseSurface = BrandInverseSurfaceLight,
+    inverseOnSurface = BrandInverseOnSurfaceLight,
+    outline = BrandOutlineLight,
+    outlineVariant = BrandOutlineVariantLight,
+    error = BrandErrorLight,
+    onError = BrandOnErrorLight,
+    errorContainer = BrandErrorContainerLight,
+    onErrorContainer = BrandOnErrorContainerLight
 )
 
+/**
+ * ZeroPhone brand theme.
+ *
+ * Dynamic-color policy: dynamic color is OFF by design (default `false`).
+ * ZeroLauncher is a focus tool whose calm paper/pine identity must stay
+ * identical on every device and wallpaper; wallpaper-derived tinting would
+ * fight that intent and re-randomize the palette per user. The parameter is
+ * kept so previews/experiments can opt in explicitly (Android 12+ only).
+ */
 @Composable
 fun ZeroPhoneTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -52,6 +112,7 @@ fun ZeroPhoneTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = Shapes,
         content = content
     )
 }

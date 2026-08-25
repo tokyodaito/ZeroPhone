@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.numenlabs.zerophone.core.model.Availability
+import com.numenlabs.zerophone.desktop.theme.ZeroDesktopTheme
 import com.numenlabs.zerophone.desktop.state.AppStateHolder
 import com.numenlabs.zerophone.desktop.state.ConnectionState
 import com.numenlabs.zerophone.desktop.state.DashboardModel
@@ -85,7 +86,7 @@ fun main(args: Array<String>) {
         LaunchedEffect(Unit) { engine.start(this) }
 
         Window(onCloseRequest = ::exitApplication, title = "ZeroPhone Desktop") {
-            MaterialTheme {
+            ZeroDesktopTheme {
                 AppWindow(
                     state = holder.state.value,
                     serverUrl = serverUrl,
@@ -303,10 +304,11 @@ private fun StatusBar(state: com.numenlabs.zerophone.desktop.state.DesktopAppSta
     }
 }
 
+@Composable
 private fun availabilityColor(state: Availability): Color = when (state) {
-    Availability.AVAILABLE -> Color(0xFF2E7D32)
-    Availability.TEMPORARILY_AVAILABLE -> Color(0xFF9E7C0C)
-    Availability.CONTEXTUAL -> Color(0xFF5B3FA8)
-    Availability.RESTRICTED -> Color(0xFFB25000)
-    Availability.BLOCKED -> Color(0xFFB3261E)
+    Availability.AVAILABLE -> MaterialTheme.colorScheme.primary
+    Availability.TEMPORARILY_AVAILABLE -> MaterialTheme.colorScheme.secondary
+    Availability.CONTEXTUAL -> MaterialTheme.colorScheme.tertiary
+    Availability.RESTRICTED -> MaterialTheme.colorScheme.error
+    Availability.BLOCKED -> MaterialTheme.colorScheme.error
 }
