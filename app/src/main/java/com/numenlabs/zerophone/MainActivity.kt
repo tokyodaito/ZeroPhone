@@ -12,6 +12,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -160,6 +165,7 @@ private fun ZeroPhoneApp(
     val scope = rememberCoroutineScope()
 
     var apps by remember { mutableStateOf<List<PolicyApplier.LauncherApp>>(emptyList()) }
+    var appsLoaded by remember { mutableStateOf(false) }
     var allowlist by remember { mutableStateOf<Set<String>>(emptySet()) }
     var deviceOwner by remember { mutableStateOf(false) }
     var deadline by remember { mutableStateOf(EmergencyWindow.NONE_DEADLINE) }
@@ -206,6 +212,7 @@ private fun ZeroPhoneApp(
             priorityPackages = notificationSettings.getPriorityPackages()
             if (reloadApps) {
                 apps = applier.getLauncherApps()
+                appsLoaded = true
             }
         }
     }
@@ -275,13 +282,25 @@ private fun ZeroPhoneApp(
     }
 
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = HomeRoute) {
+    NavHost(
+        navController = navController,
+        startDestination = HomeRoute,
+        enterTransition = {
+            fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 4 }
+        },
+        exitTransition = { fadeOut(tween(180)) },
+        popEnterTransition = { fadeIn(tween(220)) },
+        popExitTransition = {
+            fadeOut(tween(180)) + slideOutHorizontally(tween(220)) { it / 4 }
+        }
+    ) {
         composable<HomeRoute> {
             HomeScreen(
                 apps = apps,
                 allowlist = allowlist,
                 selfPackage = selfPackage,
                 deviceOwner = deviceOwner,
+                appsLoading = !appsLoaded,
                 window = window,
                 nowMillis = now,
                 nextEvent = nextEvent,

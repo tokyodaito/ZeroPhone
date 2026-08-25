@@ -34,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -83,6 +84,7 @@ fun HomeScreen(
     allowlist: Set<String>,
     selfPackage: String,
     deviceOwner: Boolean,
+    appsLoading: Boolean,
     window: EmergencyWindow,
     nowMillis: Long,
     nextEvent: CalendarEvent?,
@@ -211,7 +213,16 @@ fun HomeScreen(
         Spacer(Modifier.height(16.dp))
         SectionLabel(text = stringResource(R.string.home_apps_section))
         Spacer(Modifier.height(4.dp))
-        if (visibleApps.isEmpty()) {
+        if (appsLoading) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else if (visibleApps.isEmpty()) {
             Box(
                 modifier = Modifier
                     .weight(1f)
