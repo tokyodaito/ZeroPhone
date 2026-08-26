@@ -2,8 +2,6 @@ package com.numenlabs.zerophone.sync.server
 
 import com.numenlabs.zerophone.sync.server.auth.DeviceTokenStore
 import com.numenlabs.zerophone.sync.server.auth.installDeviceTokenAuth
-import com.numenlabs.zerophone.sync.server.link.PendingLinkStore
-import com.numenlabs.zerophone.sync.server.link.installLinkDelivery
 import com.numenlabs.zerophone.sync.server.pairing.PairingStore
 import com.numenlabs.zerophone.sync.server.pairing.installPairing
 import com.numenlabs.zerophone.sync.server.state.StateStore
@@ -17,9 +15,8 @@ import java.nio.file.Path
 /**
  * Assembles the sync server from its feature installers over one data
  * directory of file-backed JSON stores: device-token auth, conditional
- * state sync with WebSocket pushes, shortcode pairing (which hands
- * out the device tokens) and the store-and-forward queue of
- * send-to-PC links. See [MainKt] for the runnable entry point and
+ * state sync with WebSocket pushes and shortcode pairing (which hands
+ * out the device tokens). See [MainKt] for the runnable entry point and
  * the fat-jar packaging.
  */
 fun Application.syncServerModule(dataDir: Path) {
@@ -27,10 +24,8 @@ fun Application.syncServerModule(dataDir: Path) {
     val tokenStore = DeviceTokenStore(dataDir.resolve("device-tokens.json"))
     val stateStore = StateStore(dataDir.resolve("state.json"))
     val pairingStore = PairingStore(dataDir.resolve(PairingStore.FILE_NAME))
-    val pendingLinks = PendingLinkStore(dataDir.resolve(PendingLinkStore.FILE_NAME))
     val broadcaster = WsBroadcaster()
     installDeviceTokenAuth(tokenStore)
-    installStateSync(stateStore, broadcaster, pendingLinks)
-    installLinkDelivery(pendingLinks, broadcaster)
+    installStateSync(stateStore, broadcaster)
     installPairing(pairingStore, tokenStore)
 }

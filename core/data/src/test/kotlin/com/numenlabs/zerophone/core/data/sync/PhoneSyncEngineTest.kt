@@ -1,7 +1,6 @@
 package com.numenlabs.zerophone.core.data.sync
 
 import com.numenlabs.zerophone.core.model.DeviceCredentials
-import com.numenlabs.zerophone.core.model.LinkPayload
 import com.numenlabs.zerophone.core.model.PairingClaim
 import com.numenlabs.zerophone.core.model.PolicySnapshot
 import com.numenlabs.zerophone.core.model.StateEnvelope
@@ -15,7 +14,6 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -23,7 +21,7 @@ import org.junit.Test
 /**
  * [PhoneSyncEngine] semantics on a scripted fake transport with in-memory
  * stores: the pairing gate, conditional pull/push, domain application via
- * [InMemoryPolicyRepository], send-to-PC and the pure backoff schedule —
+ * [InMemoryPolicyRepository] and the pure backoff schedule —
  * all pure JVM, no Android APIs. The polling loop is driven step-wise
  * through virtual time (`runCurrent` / `advanceTimeBy`).
  */
@@ -33,11 +31,9 @@ class PhoneSyncEngineTest {
         val pullCalls = mutableListOf<Long?>()
         val pushCalls = mutableListOf<StateUpdateRequest>()
         val claims = mutableListOf<PairingClaim>()
-        val links = mutableListOf<LinkPayload>()
         var pullResult: suspend (Long?) -> PullResult = { PullResult.NotModified }
         var pushResult: PushResult = PushResult.BadRequest
         var claimResult: PairingResult = PairingResult.Rejected
-        var linkResult: LinkSendResult = LinkSendResult.Sent
 
         override suspend fun pull(baseRevision: Long?): PullResult {
             pullCalls.add(baseRevision)
@@ -52,11 +48,6 @@ class PhoneSyncEngineTest {
         override suspend fun claim(claim: PairingClaim): PairingResult {
             claims.add(claim)
             return claimResult
-        }
-
-        override suspend fun sendLink(payload: LinkPayload): LinkSendResult {
-            links.add(payload)
-            return linkResult
         }
     }
 
@@ -274,34 +265,6 @@ class PhoneSyncEngineTest {
             runCurrent()
             assertEquals(SyncEngineEvent.PairingRequired, events.last())
         }
-    }
-
-    @Test
-    fun `sendLink carries the device identity and a fresh timestamp`() = runTest {
-        credentials.save(DeviceCredentials(deviceId = "phone-9", token = "t", deviceName = "my phone"))
-        val transport = FakeTransport()
-        val engine = newEngine(transport)
-
-        val result = engine.sendLink("https://example.com/a", title = "A")
-
-        assertEquals(LinkSendResult.Sent, result)
-        val payload = transport.links.single()
-        assertEquals("https://example.com/a", payload.url)
-        assertEquals("A", payload.title)
-        assertEquals("phone-9", payload.sourceDeviceId)
-        assertEquals("my phone", payload.sourceDeviceName)
-        assertEquals(100_000L, payload.sentAtMillis)
-        assertNotNull(payload.id)
-    }
-
-    @Test
-    fun `sendLink surfaces rejection`() = runTest {
-        credentials.save(DeviceCredentials(deviceId = "d", token = "t"))
-        val transport = FakeTransport()
-        transport.linkResult = LinkSendResult.Rejected
-        val engine = newEngine(transport)
-
-        assertEquals(LinkSendResult.Rejected, engine.sendLink("https://example.com"))
     }
 
     @Test

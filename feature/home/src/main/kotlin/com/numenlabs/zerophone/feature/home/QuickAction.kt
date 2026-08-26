@@ -16,17 +16,7 @@ enum class QuickAction(val capabilityId: String) {
     NAVIGATE(LogicalCapabilities.NAVIGATE),
     PAY(LogicalCapabilities.PAY),
     CAMERA(LogicalCapabilities.CAMERA),
-
-    /**
-     * "Отправить на ПК": relays a link to the paired desktop over the
-     * self-hosted sync server. Not an engine-governed capability — its
-     * availability comes from the sync wiring, not the contextual engine.
-     */
-    SEND_TO_PC(SEND_TO_PC_CAPABILITY);
 }
-
-/** Capability id of the send-to-PC quick action (outside the engine catalog). */
-const val SEND_TO_PC_CAPABILITY: String = "send-to-pc"
 
 /**
  * A quick action is usable in every engine state except a full block:

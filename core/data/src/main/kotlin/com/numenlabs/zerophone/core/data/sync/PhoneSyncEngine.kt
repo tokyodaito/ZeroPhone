@@ -1,6 +1,5 @@
 package com.numenlabs.zerophone.core.data.sync
 
-import com.numenlabs.zerophone.core.model.LinkPayload
 import com.numenlabs.zerophone.core.model.PairingClaim
 import com.numenlabs.zerophone.core.model.StateEnvelope
 import com.numenlabs.zerophone.core.model.StateUpdateRequest
@@ -16,7 +15,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.UUID
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -47,7 +45,6 @@ enum class PairingOutcome {
  *    the composition re-run [com.numenlabs.zerophone.core.policy.PolicyApplier].
  *  - **Push** — conditional PUT of the domain state; a 409 applies the
  *    winning envelope so the caller converges.
- *  - **Send to PC** — [sendLink] relays a link to the paired desktops.
  *  - **Resilience** — transport failures disconnect and retry with the
  *    pure [backoffMillis] schedule.
  *
@@ -159,19 +156,6 @@ class PhoneSyncEngine(
             PushResult.BadRequest,
             PushResult.Unauthorized -> result
         }
-    }
-
-    /** "Send to PC": relays [url] to the paired desktops via the link endpoint. */
-    suspend fun sendLink(url: String, title: String? = null): LinkSendResult {
-        val payload = LinkPayload(
-            id = UUID.randomUUID().toString(),
-            url = url,
-            title = title,
-            sourceDeviceId = credentials.load()?.deviceId,
-            sourceDeviceName = credentials.load()?.deviceName ?: "phone",
-            sentAtMillis = timeSource(),
-        )
-        return transport.sendLink(payload)
     }
 
     private suspend fun apply(envelope: StateEnvelope) {

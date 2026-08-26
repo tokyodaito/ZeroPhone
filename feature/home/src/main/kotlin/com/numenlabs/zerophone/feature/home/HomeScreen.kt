@@ -97,12 +97,10 @@ fun HomeScreen(
     onEmergencyUnlock: () -> Unit,
     onSetMode: (mode: String) -> Unit,
     onQuickAction: (action: QuickAction) -> Unit,
-    onSendToPc: (url: String) -> Unit,
     onAddTask: (title: String) -> Unit,
     onToggleTask: (id: String, done: Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    var showSendToPcDialog by remember { mutableStateOf(false) }
     val activeEmergency = window as? EmergencyWindow.Active
 
     Column(
@@ -202,9 +200,7 @@ fun HomeScreen(
         Spacer(Modifier.height(8.dp))
         QuickActionsRow(
             actionStates = actionStates,
-            onQuickAction = { action ->
-                if (action == QuickAction.SEND_TO_PC) showSendToPcDialog = true else onQuickAction(action)
-            }
+            onQuickAction = onQuickAction
         )
 
         val visibleApps = apps.filter {
@@ -291,16 +287,6 @@ fun HomeScreen(
             }
         }
     }
-
-    if (showSendToPcDialog) {
-        SendToPcDialog(
-            onSend = { url ->
-                showSendToPcDialog = false
-                onSendToPc(url)
-            },
-            onDismiss = { showSendToPcDialog = false }
-        )
-    }
 }
 
 @Composable
@@ -370,79 +356,6 @@ private fun EmptyState(icon: ImageVector, text: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
-        )
-    }
-}
-
-/** "Отправить на ПК": URL input handed to the sync wiring, never auto-sent. */
-@Composable
-private fun SendToPcDialog(
-    onSend: (url: String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var url by remember { mutableStateOf("") }
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            shape = MaterialTheme.shapes.extraLarge
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                DialogIcon(
-                    icon = ZeroIcons.SendToPc,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    onContainerColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = stringResource(R.string.send_to_pc_dialog_title),
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    singleLine = true,
-                    placeholder = { Text(stringResource(R.string.send_to_pc_dialog_hint)) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.send_to_pc_dialog_cancel))
-                    }
-                    Button(
-                        onClick = { onSend(url.trim()) },
-                        enabled = url.startsWith("http://") || url.startsWith("https://"),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        Text(stringResource(R.string.send_to_pc_dialog_send))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DialogIcon(
-    icon: ImageVector,
-    containerColor: androidx.compose.ui.graphics.Color,
-    onContainerColor: androidx.compose.ui.graphics.Color
-) {
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .background(containerColor, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = onContainerColor,
-            modifier = Modifier.size(24.dp)
         )
     }
 }
@@ -777,7 +690,6 @@ private fun quickActionIcon(action: QuickAction): ImageVector = when (action) {
     QuickAction.NAVIGATE -> ZeroIcons.Navigate
     QuickAction.PAY -> ZeroIcons.Pay
     QuickAction.CAMERA -> ZeroIcons.Camera
-    QuickAction.SEND_TO_PC -> ZeroIcons.SendToPc
 }
 
 private fun quickActionLabel(action: QuickAction): Int = when (action) {
@@ -786,7 +698,6 @@ private fun quickActionLabel(action: QuickAction): Int = when (action) {
     QuickAction.NAVIGATE -> R.string.quick_action_navigate
     QuickAction.PAY -> R.string.quick_action_pay
     QuickAction.CAMERA -> R.string.quick_action_camera
-    QuickAction.SEND_TO_PC -> R.string.quick_action_send_to_pc
 }
 
 internal fun formatRemaining(millis: Long): String {

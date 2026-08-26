@@ -121,41 +121,6 @@ object ZeroIcons {
         })
     }
 
-    /** Desktop monitor — the "На ПК" quick action. */
-    val SendToPc: ImageVector by lazy {
-        zeroIcon("SendToPc", {
-            // Bezel (clockwise).
-            moveTo(4f, 4f)
-            lineTo(20f, 4f)
-            arcToRelative(2f, 2f, 0f, false, true, 2f, 2f)
-            lineToRelative(0f, 10f)
-            arcToRelative(2f, 2f, 0f, false, true, -2f, 2f)
-            lineTo(4f, 18f)
-            arcToRelative(2f, 2f, 0f, false, true, -2f, -2f)
-            lineTo(2f, 6f)
-            arcToRelative(2f, 2f, 0f, false, true, 2f, -2f)
-            close()
-            // Screen hole (counter-clockwise).
-            moveTo(4f, 6f)
-            lineTo(4f, 16f)
-            lineTo(20f, 16f)
-            lineTo(20f, 6f)
-            close()
-        }, {
-            // Stand.
-            moveTo(11.25f, 18f)
-            lineTo(12.75f, 18f)
-            lineTo(12.75f, 20.5f)
-            lineTo(11.25f, 20.5f)
-            close()
-            moveTo(8f, 20.5f)
-            lineTo(16f, 20.5f)
-            lineTo(16f, 22f)
-            lineTo(8f, 22f)
-            close()
-        })
-    }
-
     /** Warning triangle with exclamation — Device Owner alerts. */
     val Warning: ImageVector by lazy {
         zeroIcon("Warning", {

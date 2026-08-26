@@ -192,43 +192,9 @@ class SyncContractsTest {
     }
 
     @Test
-    fun `link payload roundtrip`() {
-        val payload = LinkPayload(
-            id = "l3",
-            url = "https://example.com/article",
-            title = "Article",
-            sourceDeviceId = "phone-1",
-            sourceDeviceName = "ZeroPhone",
-            sentAtMillis = 1000L,
-        )
-        assertEquals(
-            payload,
-            json.decodeFromString(
-                LinkPayload.serializer(),
-                json.encodeToString(LinkPayload.serializer(), payload),
-            ),
-        )
-    }
-
-    @Test
-    fun `push envelope decodes link-received with type discriminator`() {
-        val text = """
-            {"type": "link.received", "payload": {"id": "l1", "url": "https://example.com", "title": "Example", "sentAtMillis": 42}}
-        """.trimIndent()
-
-        val push = json.decodeFromString<SyncPushMessage>(text)
-
-        assertTrue(push is SyncPushMessage.LinkReceived)
-        val link = (push as SyncPushMessage.LinkReceived).payload
-        assertEquals("l1", link.id)
-        assertEquals("https://example.com", link.url)
-        assertEquals(42L, link.sentAtMillis)
-    }
-
-    @Test
     fun `push wire names are exactly the fixed event discriminators`() {
         // Golden strings: the event names are protocol constants shared
-        // with the server and the desktop client — a typo here is a
+        // with the server and the clients — a typo here is a
         // cross-device break, not a compile error.
         fun wireName(message: SyncPushMessage): String =
             json.parseToJsonElement(json.encodeToString(SyncPushMessage.serializer(), message))
@@ -243,10 +209,6 @@ class SyncContractsTest {
         assertEquals(
             "state.updated",
             wireName(SyncPushMessage.StateUpdated(revision = 8, actorDeviceId = "phone-1")),
-        )
-        assertEquals(
-            "link.received",
-            wireName(SyncPushMessage.LinkReceived(LinkPayload(id = "l2", url = "https://x.dev"))),
         )
     }
 
@@ -293,15 +255,6 @@ class SyncContractsTest {
 
     @Test
     fun `push envelope roundtrip preserves variants`() {
-        val link = SyncPushMessage.LinkReceived(LinkPayload(id = "l2", url = "https://x.dev"))
-        assertEquals(
-            link,
-            json.decodeFromString(
-                SyncPushMessage.serializer(),
-                json.encodeToString(SyncPushMessage.serializer(), link),
-            ),
-        )
-
         val updated = SyncPushMessage.StateUpdated(revision = 11, actorDeviceId = "phone-1")
         assertEquals(
             updated,

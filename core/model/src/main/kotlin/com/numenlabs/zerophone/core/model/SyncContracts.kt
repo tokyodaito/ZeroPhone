@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Sync wire contracts shared by the phone, the desktop client and the sync
- * server (phase 3). This file is the single source of cross-device models:
+ * Sync wire contracts shared by the phone and the sync
+ * server. This file is the single source of cross-device models:
  * pure Kotlin + kotlinx.serialization, no platform dependencies, no duplicates.
  */
 
@@ -16,8 +16,6 @@ object SyncEndpoints {
     const val WEBSOCKET = "/api/v1/ws"
     const val PAIRING_CLAIM = "/api/v1/pairing/claim"
 
-    /** "Send to PC": the phone POSTs a link, the server relays it to desktops. */
-    const val LINK = "/api/v1/link"
     const val AUTH_ROTATE = "/api/v1/auth/rotate"
     const val AUTH_TOKEN = "/api/v1/auth/token"
 
@@ -130,23 +128,11 @@ data class StateUpdateRequest(
     val hint: String? = null,
 )
 
-/** A link sent from the phone ("отправить на ПК") through the sync server. */
-@Serializable
-data class LinkPayload(
-    val id: String,
-    val url: String,
-    val title: String? = null,
-    val sourceDeviceId: String? = null,
-    val sourceDeviceName: String? = null,
-    val sentAtMillis: Long = 0L,
-)
-
 /**
  * WebSocket push envelope. The socket is only a notification channel:
  * the state variants carry revisions but never the state itself — a
  * client that is behind catches up with exactly one full REST pull of
- * `GET /api/v1/state` (no deltas, no replay). `link.received` is the
- * push half of send-to-PC and carries only the link payload.
+ * `GET /api/v1/state` (no deltas, no replay).
  */
 @Serializable
 sealed interface SyncPushMessage {
@@ -171,10 +157,6 @@ sealed interface SyncPushMessage {
         val actorDeviceId: String,
         val hint: String? = null,
     ) : SyncPushMessage
-
-    @Serializable
-    @SerialName("link.received")
-    data class LinkReceived(val payload: LinkPayload) : SyncPushMessage
 }
 
 /** Request body for claiming a pairing code issued by the phone/server. */

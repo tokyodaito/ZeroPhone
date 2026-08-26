@@ -33,11 +33,6 @@
     <string name="quick_action_navigate">Доехать</string>
     <string name="quick_action_pay">Заплатить</string>
     <string name="quick_action_camera">Камера</string>
-    <string name="quick_action_send_to_pc">На ПК</string>
-    <string name="send_to_pc_dialog_title">Отправить на ПК</string>
-    <string name="send_to_pc_dialog_hint">Ссылка (https://…)</string>
-    <string name="send_to_pc_dialog_send">Отправить</string>
-    <string name="send_to_pc_dialog_cancel">Отмена</string>
     <plurals name="home_important_unread">
         <item quantity="one">%1$d сообщение требует ответа</item>
         <item quantity="few">%1$d сообщения требуют ответа</item>

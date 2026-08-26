@@ -16,16 +16,10 @@ class QuickActionTest {
 
     @Test
     fun `every quick action binds to a distinct known capability`() {
-        val engineGoverned = QuickAction.entries
-            .filter { it != QuickAction.SEND_TO_PC }
-            .map { it.capabilityId }
+        val capabilityIds = QuickAction.entries.map { it.capabilityId }
 
-        assertEquals(LogicalCapabilities.ALL, engineGoverned)
-        assertEquals(engineGoverned.distinct().size, engineGoverned.size)
-
-        // Send-to-PC is a sync action, not an engine capability.
-        assertEquals(SEND_TO_PC_CAPABILITY, QuickAction.SEND_TO_PC.capabilityId)
-        assertFalse(LogicalCapabilities.ALL.contains(SEND_TO_PC_CAPABILITY))
+        assertEquals(LogicalCapabilities.ALL, capabilityIds)
+        assertEquals(capabilityIds.distinct().size, capabilityIds.size)
     }
 
     @Test

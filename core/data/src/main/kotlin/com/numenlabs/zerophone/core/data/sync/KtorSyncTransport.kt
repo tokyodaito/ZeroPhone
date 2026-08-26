@@ -1,7 +1,6 @@
 package com.numenlabs.zerophone.core.data.sync
 
 import com.numenlabs.zerophone.core.model.DeviceCredentials
-import com.numenlabs.zerophone.core.model.LinkPayload
 import com.numenlabs.zerophone.core.model.PairingClaim
 import com.numenlabs.zerophone.core.model.StateEnvelope
 import com.numenlabs.zerophone.core.model.StateUpdateRequest
@@ -26,7 +25,7 @@ import kotlinx.serialization.json.Json
  * [SyncTransport] for the phone over one ktor [HttpClient] (CIO, pure
  * JVM): Bearer device token on every call, kotlinx-json content
  * negotiation over the shared `:core:model` wire contracts, and the
- * conditional-GET / conditional-PUT / pairing / link endpoints mapped to
+ * conditional-GET / conditional-PUT / pairing endpoints mapped to
  * the pure result types. The token is read per call from the
  * [SyncCredentialsStore], so pairing and re-pairing need no client
  * rebuild.
@@ -39,7 +38,6 @@ class KtorSyncTransport(
 
     private val stateUrl: String = serverUrl.trimEnd('/') + SyncEndpoints.STATE
     private val pairingUrl: String = serverUrl.trimEnd('/') + SyncEndpoints.PAIRING_CLAIM
-    private val linkUrl: String = serverUrl.trimEnd('/') + SyncEndpoints.LINK
 
     override suspend fun pull(baseRevision: Long?): PullResult {
         val token = requireToken()
@@ -85,22 +83,6 @@ class KtorSyncTransport(
             HttpStatusCode.BadRequest -> PairingResult.Rejected
 
             else -> error("pairing claim failed: HTTP ${response.status.value}")
-        }
-    }
-
-    override suspend fun sendLink(payload: LinkPayload): LinkSendResult {
-        val token = requireToken()
-        val response = client.post(linkUrl) {
-            header(HttpHeaders.Authorization, "Bearer $token")
-            contentType(ContentType.Application.Json)
-            setBody(payload)
-        }
-        return when (response.status) {
-            HttpStatusCode.Accepted,
-            HttpStatusCode.OK -> LinkSendResult.Sent
-
-            HttpStatusCode.Unauthorized -> LinkSendResult.Unauthorized
-            else -> LinkSendResult.Rejected
         }
     }
 

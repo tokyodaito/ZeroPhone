@@ -16,7 +16,7 @@ import com.numenlabs.zerophone.core.model.EmergencyWindow
  *
  * Suspend API so implementations are free to use structured async storage
  * (Preferences DataStore in the Android app). Pure Kotlin — no Android types —
- * so tests (and later the :desktop dashboard) can provide their own implementation.
+ * so tests can provide their own implementation.
  */
 interface PolicyRepository {
 

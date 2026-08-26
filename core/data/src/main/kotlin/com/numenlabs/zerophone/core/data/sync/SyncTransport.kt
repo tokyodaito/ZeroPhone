@@ -1,7 +1,6 @@
 package com.numenlabs.zerophone.core.data.sync
 
 import com.numenlabs.zerophone.core.model.DeviceCredentials
-import com.numenlabs.zerophone.core.model.LinkPayload
 import com.numenlabs.zerophone.core.model.PairingClaim
 import com.numenlabs.zerophone.core.model.StateEnvelope
 import com.numenlabs.zerophone.core.model.StateUpdateRequest
@@ -34,17 +33,10 @@ sealed interface PairingResult {
     data object Rejected : PairingResult
 }
 
-/** Outcome of `POST /api/v1/link` ("send to PC"). */
-sealed interface LinkSendResult {
-    data object Sent : LinkSendResult
-    data object Rejected : LinkSendResult
-    data object Unauthorized : LinkSendResult
-}
-
 /**
  * Pure Kotlin view of the sync server for the phone: one pull endpoint
- * with optional revision conditionality, one conditional push, the
- * pairing claim and the link relay. No ktor/HTTP types leak through —
+ * with optional revision conditionality, one conditional push and the
+ * pairing claim. No ktor/HTTP types leak through —
  * [PhoneSyncEngine] depends only on this interface, which the fake
  * transport in the unit tests implements. Transport-level failures
  * (offline, DNS, timeouts) surface as thrown exceptions and are handled
@@ -60,7 +52,4 @@ interface SyncTransport {
 
     /** `POST /api/v1/pairing/claim` — exchange a shortcode for credentials. */
     suspend fun claim(claim: PairingClaim): PairingResult
-
-    /** `POST /api/v1/link` — relay a link to the paired desktops. */
-    suspend fun sendLink(payload: LinkPayload): LinkSendResult
 }
