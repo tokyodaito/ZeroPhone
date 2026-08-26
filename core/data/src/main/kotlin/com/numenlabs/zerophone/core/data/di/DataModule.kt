@@ -7,17 +7,9 @@ import com.numenlabs.zerophone.core.data.calendar.CalendarSource
 import com.numenlabs.zerophone.core.data.notifications.DataStoreNotificationSettingsRepository
 import com.numenlabs.zerophone.core.data.notifications.NotificationSettingsRepository
 import com.numenlabs.zerophone.core.data.snapshot.AndroidSnapshotProvider
-import com.numenlabs.zerophone.core.data.sync.DataStoreSyncCredentialsStore
-import com.numenlabs.zerophone.core.data.sync.KtorSyncTransport
-import com.numenlabs.zerophone.core.data.sync.PhoneSyncEngine
-import com.numenlabs.zerophone.core.data.sync.SyncCredentialsStore
-import com.numenlabs.zerophone.core.data.sync.SyncServerConfig
-import com.numenlabs.zerophone.core.data.sync.SyncTransport
 import com.numenlabs.zerophone.core.data.tasks.DataStoreTaskRepository
 import com.numenlabs.zerophone.core.data.tasks.TaskRepository
 import com.numenlabs.zerophone.core.data.usage.AndroidUsageStatsSource
-import com.numenlabs.zerophone.core.policy.PolicyApplier
-import com.numenlabs.zerophone.core.policy.PolicyRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -59,34 +51,4 @@ object DataModule {
     @Singleton
     fun provideUsageStatsSource(@ApplicationContext context: Context): AndroidUsageStatsSource =
         AndroidUsageStatsSource(context)
-
-    @Provides
-    @Singleton
-    fun provideSyncCredentialsStore(
-        @ApplicationContext context: Context
-    ): SyncCredentialsStore = DataStoreSyncCredentialsStore(context)
-
-    @Provides
-    @Singleton
-    fun provideSyncTransport(credentials: SyncCredentialsStore): SyncTransport =
-        KtorSyncTransport(serverUrl = SyncServerConfig.DEFAULT_SERVER_URL, credentials = credentials)
-
-    /**
-     * Phone-side sync engine: remote applies land in the policy repository
-     * and are immediately re-computed through the [PolicyApplier], keeping
-     * the suspend-set and the launcher in sync with what arrived.
-     */
-    @Provides
-    @Singleton
-    fun providePhoneSyncEngine(
-        transport: SyncTransport,
-        credentials: SyncCredentialsStore,
-        policyRepository: PolicyRepository,
-        applier: PolicyApplier,
-    ): PhoneSyncEngine = PhoneSyncEngine(
-        transport = transport,
-        credentials = credentials,
-        policy = policyRepository,
-        onPolicyApplied = { applier.reconcile() },
-    )
 }

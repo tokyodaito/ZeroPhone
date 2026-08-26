@@ -32,7 +32,7 @@ import java.util.Calendar
  * Persistence goes through the [PolicyRepository] interface (Preferences DataStore).
  *
  * Reconcile has several concurrent entry points (activity refresh, boot /
- * re-lock / package-event receivers, the sync engine); every mutating call is
+ * re-lock / package-event receivers); every mutating call is
  * serialized through [mutex] so a package event racing the re-lock alarm can
  * never land an unsuspend after the lock pass finished.
  *

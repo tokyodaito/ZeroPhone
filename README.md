@@ -23,22 +23,6 @@ ZeroPhone — Android-приложение (Kotlin + Jetpack Compose), кото�
 - **Без Device Owner** приложение корректно работает как обычный лаунчер: показывает сетку allowlist-приложений и запускает их, но **не блокирует** ничего — в UI отображается предупреждение о том, что Device Owner не назначен.
 - Блокировка обратима: MVP не использует `wipeData()`, `lockNow()` и другие необратимые действия; системные пакеты не блокируются.
 
-### Sync-сервер (experimental)
-
-Репозиторий содержит Ktor-сервер (`:sync:server`) и телефонный движок синхронизации (`PhoneSyncEngine` в `:core:data`), обмен state-снапшотами через REST (`GET/PUT /api/v1/state`) с pairing поshortcode'ам. **Стек в статусе experimental**: desktop-клиент удалён (c62deca), UI pairing'а на телефоне пока отсутствует — движок стартует, но остаётся в режиме ожидания pairing-кода, поэтому в рантайме ничего не синхронизирует.
-
-Запуск сервера локально (fat-jar собирается задачей `shadowJar`):
-
-```bash
-./gradlew :sync:server:shadowJar
-# Выпустить pairing-код (по умолчанию живёт 10 минут):
-java -jar sync/server/build/libs/zerophone-sync-server-all.jar --issue-code [--ttl=600000] [--data=DIR]
-# Запустить сервер (порт 8080, также читает переменную окружения PORT):
-java -jar sync/server/build/libs/zerophone-sync-server-all.jar [--port=8080] [--host=0.0.0.0] [--data=DIR]
-```
-
-Данные (выданные токены, state) хранятся в `~/.zerophone-sync` (или `--data`). Shortcodes выдаются только через CLI — по HTTP их получить нельзя. Сервер слушает plain HTTP: разворачивать за reverse-proxy с TLS; класть токены и коды в открытый интернет без шифрования нельзя.
-
 ## Технические требования
 
 - Gradle-мульти-модуль (монорепа, растёт по фазам):

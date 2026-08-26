@@ -96,9 +96,6 @@ class MainActivity : ComponentActivity() {
     lateinit var notificationSettings: NotificationSettingsRepository
 
     @Inject
-    lateinit var syncEngine: com.numenlabs.zerophone.core.data.sync.PhoneSyncEngine
-
-    @Inject
     lateinit var usageStatsSource: AndroidUsageStatsSource
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,7 +109,6 @@ class MainActivity : ComponentActivity() {
                     taskRepository = taskRepository,
                     notificationsStore = notificationsStore,
                     notificationSettings = notificationSettings,
-                    syncEngine = syncEngine,
                     usageStatsSource = usageStatsSource,
                     onQuickActionIntent = ::launchQuickAction
                 )
@@ -228,7 +224,6 @@ private fun ZeroPhoneApp(
     taskRepository: TaskRepository,
     notificationsStore: ImportantNotificationsStore,
     notificationSettings: NotificationSettingsRepository,
-    syncEngine: com.numenlabs.zerophone.core.data.sync.PhoneSyncEngine,
     usageStatsSource: AndroidUsageStatsSource,
     onQuickActionIntent: (QuickAction) -> Boolean
 ) {
@@ -281,12 +276,6 @@ private fun ZeroPhoneApp(
     val activeNotifications by notificationsStore.active.collectAsState()
     val importantUnreadCount = remember(activeNotifications, priorityPackages) {
         ImportantNotificationFilter(priorityPackages).countImportant(activeNotifications)
-    }
-
-    // Phone-side sync: the engine keeps the policy store synchronized and
-    // re-runs the applier whenever a remote change landed.
-    LaunchedEffect(Unit) {
-        syncEngine.start(this)
     }
 
     fun refresh(reloadApps: Boolean = true) {
