@@ -38,6 +38,12 @@ android {
     buildFeatures {
         compose = true
     }
+    lint {
+        // The device-owner launcher must enumerate every launchable app for
+        // the allowlist and suspend policy — <queries> filters are not enough
+        // here, and the app is not distributed via Google Play.
+        disable += "QueryAllPackagesPermission"
+    }
 }
 
 // compileSdk is pinned to 36.1; cap transitive androidx.core/lifecycle to

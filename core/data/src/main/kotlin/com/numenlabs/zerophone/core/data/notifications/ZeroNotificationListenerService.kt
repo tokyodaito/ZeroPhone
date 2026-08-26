@@ -46,7 +46,12 @@ class ZeroNotificationListenerService : NotificationListenerService() {
     }
 
     private fun record(sbn: StatusBarNotification) {
-        if (sbn.isOngoing) {
+        // Ongoing (media/navigation/calls) and group-summary notifications are
+        // not "unread messages requiring a reply"; summaries would also double
+        // count every group.
+        if (sbn.isOngoing ||
+            (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+        ) {
             active.remove(keyOf(sbn))
             return
         }
@@ -68,14 +73,23 @@ class ZeroNotificationListenerService : NotificationListenerService() {
     /**
      * Channel importance (API 26+); pre-O notifications fall back to the
      * legacy priority mapping.
+     *
+     * The package-scoped two-arg [NotificationManager.getNotificationChannel]
+     * is API 30+ — on API 26-29 only the one-arg overload exists and it sees
+     * just our own package, so other apps' channels degrade to the legacy
+     * mapping there (calling the two-arg form crashes with NoSuchMethodError).
      */
     private fun importanceOf(sbn: StatusBarNotification): Int {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channelId = sbn.notification.channelId
             if (channelId != null) {
                 try {
-                    val channel = getSystemService(NotificationManager::class.java)
-                        ?.getNotificationChannel(sbn.packageName, channelId)
+                    val manager = getSystemService(NotificationManager::class.java)
+                    val channel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        manager?.getNotificationChannel(sbn.packageName, channelId)
+                    } else {
+                        manager?.getNotificationChannel(channelId)
+                    }
                     if (channel != null) return channel.importance
                 } catch (_: Exception) {
                     // Fall through to the legacy mapping.

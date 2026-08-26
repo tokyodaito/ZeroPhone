@@ -35,8 +35,9 @@ enum class ContextSignal { AT_WORK, AT_HOME, CALENDAR_EVENT_ACTIVE, NIGHT_TIME, 
 /**
  * Everything the engine knows about "now": wall clock, local time-of-day for
  * TimeWindow rules, the active mode and whether a calendar event is running.
- * minuteOfDay/dayOfWeek are supplied by the caller (local timezone) so the
- * engine itself stays pure and timezone-free.
+ * minuteOfDay/dayOfWeek/epochDay are supplied by the caller (local timezone)
+ * so the engine itself stays pure and timezone-free; the epoch day default is
+ * UTC-derived for tests and pure-Kotlin callers without a zone.
  */
 data class ContextSnapshot(
     val nowMillis: Long = 0L,
@@ -44,7 +45,8 @@ data class ContextSnapshot(
     val dayOfWeek: WeekDay = WeekDay.MONDAY,
     val activeMode: String? = null,
     val calendarBusy: Boolean = false,
-    val activeSignals: Set<ContextSignal> = emptySet()
+    val activeSignals: Set<ContextSignal> = emptySet(),
+    val epochDay: Long = TimeBudgetLedger.epochDayOf(nowMillis)
 )
 
 /** Stable mode identifiers used by rules, persistence and the launcher UI. */

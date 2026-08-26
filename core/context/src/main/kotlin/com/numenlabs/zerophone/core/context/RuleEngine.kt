@@ -86,7 +86,7 @@ object RuleEngine {
             val budget = decision.dailyBudgetMillis
             if (budget != null && environment.budgetLedger.isExhausted(
                     capability.id,
-                    TimeBudgetLedger.epochDayOf(environment.snapshot.nowMillis),
+                    environment.snapshot.epochDay,
                     budget
                 )
             ) {

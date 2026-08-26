@@ -1,9 +1,12 @@
 package com.numenlabs.zerophone
 
 import android.Manifest
+import android.app.AlarmManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
@@ -17,6 +20,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,7 +33,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -50,6 +61,8 @@ import com.numenlabs.zerophone.feature.allowlist.AllowlistScreen
 import com.numenlabs.zerophone.feature.home.EmergencyUnlockDialog
 import com.numenlabs.zerophone.feature.home.HomeScreen
 import com.numenlabs.zerophone.feature.home.QuickAction
+import com.numenlabs.zerophone.feature.home.R as HomeR
+import com.numenlabs.zerophone.feature.home.quickActionLabel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -100,8 +113,11 @@ class MainActivity : ComponentActivity() {
      * Intent templates behind the quick actions. Every action resolves to a
      * plain system intent (dialer / messenger / maps / wallet / camera) —
      * the engine has already decided the action is allowed.
+     *
+     * @return false when the device has no handler for the action, so the UI
+     * can explain instead of failing silently.
      */
-    private fun launchQuickAction(action: QuickAction) {
+    private fun launchQuickAction(action: QuickAction): Boolean {
         val intent = when (action) {
             QuickAction.CALL -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:"))
             QuickAction.MESSAGE -> Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:"))
@@ -120,19 +136,21 @@ class MainActivity : ComponentActivity() {
         }
         if (!resolved && action == QuickAction.CAMERA) {
             // Device without a dedicated still-camera activity — plain capture.
-            try {
+            return try {
                 startActivity(
                     Intent(MediaStore.ACTION_IMAGE_CAPTURE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
-                return
+                true
             } catch (_: Exception) {
-                return
+                false
             }
         }
-        try {
+        return try {
             startActivity(intent)
+            true
         } catch (_: Exception) {
-            // No handler for the action — silently ignore.
+            // No handler for the action — report back to the UI.
+            false
         }
     }
 
@@ -148,6 +166,13 @@ internal object HomeRoute
 @Serializable
 internal object AllowlistRoute
 
+/** True when the exact-alarm permission is missing, i.e. re-lock alarms run inexact. */
+private fun exactAlarmsDisabled(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+    val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return false
+    return !alarmManager.canScheduleExactAlarms()
+}
+
 @Composable
 private fun ZeroPhoneApp(
     applier: PolicyApplier,
@@ -156,11 +181,12 @@ private fun ZeroPhoneApp(
     notificationsStore: ImportantNotificationsStore,
     notificationSettings: NotificationSettingsRepository,
     syncEngine: com.numenlabs.zerophone.core.data.sync.PhoneSyncEngine,
-    onQuickActionIntent: (QuickAction) -> Unit
+    onQuickActionIntent: (QuickAction) -> Boolean
 ) {
     val context = LocalContext.current
     val selfPackage = remember { applier.selfPackageName }
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var apps by remember { mutableStateOf<List<PolicyApplier.LauncherApp>>(emptyList()) }
     var appsLoaded by remember { mutableStateOf(false) }
@@ -168,7 +194,6 @@ private fun ZeroPhoneApp(
     var deviceOwner by remember { mutableStateOf(false) }
     var deadline by remember { mutableStateOf(EmergencyWindow.NONE_DEADLINE) }
     var emergencyDuration by remember { mutableStateOf(EmergencyWindow.DEFAULT_DURATION_MS) }
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var showEmergencyDialog by remember { mutableStateOf(false) }
 
     // Contextual home-screen data.
@@ -178,6 +203,25 @@ private fun ZeroPhoneApp(
     var activeMode by remember { mutableStateOf<String>(ModeIds.WORK) }
     var actionStates by remember {
         mutableStateOf<Map<QuickAction, AvailabilityState>>(emptyMap())
+    }
+    var notificationAccessEnabled by remember { mutableStateOf(true) }
+    var exactAlarmsMissing by remember { mutableStateOf(false) }
+    // Snackbar strings resolved in composition (not via context.getString)
+    // so configuration changes invalidate them properly.
+    val noHandlerSnackbarFormat = stringResource(HomeR.string.home_no_handler_snackbar)
+    val settingsUnavailableMessage = stringResource(HomeR.string.home_settings_unavailable)
+    val actionLabels = QuickAction.entries.associate { action ->
+        action to stringResource(quickActionLabel(action))
+    }
+
+    // Banner deep links: some OEM builds lack the target settings screen —
+    // a launcher must never crash on a missing activity.
+    fun openSettingsSafely(intent: Intent) {
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            scope.launch { snackbarHostState.showSnackbar(settingsUnavailableMessage) }
+        }
     }
     val activeNotifications by notificationsStore.active.collectAsState()
     val importantUnreadCount = remember(activeNotifications, priorityPackages) {
@@ -204,6 +248,10 @@ private fun ZeroPhoneApp(
             nextEvent = calendarSource.nextEvent(nowMillis = System.currentTimeMillis())
             tasks = taskRepository.getTasks()
             priorityPackages = notificationSettings.getPriorityPackages()
+            notificationAccessEnabled =
+                NotificationManagerCompat.getEnabledListenerPackages(context)
+                    .contains(context.packageName)
+            exactAlarmsMissing = exactAlarmsDisabled(context)
             if (reloadApps) {
                 apps = applier.getLauncherApps()
                 appsLoaded = true
@@ -238,25 +286,24 @@ private fun ZeroPhoneApp(
         onDispose { activity?.lifecycle?.removeObserver(observer) }
     }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(1_000)
+    // Re-lock catch-up without a per-second recomposition: wake exactly once
+    // at the persisted deadline. Process death / Doze are covered by the
+    // AlarmManager alarm and the ON_RESUME reconcile above.
+    LaunchedEffect(deadline) {
+        val remaining = deadline - System.currentTimeMillis()
+        if (remaining > 0) {
+            delay(remaining)
+            refresh(reloadApps = false)
         }
     }
 
-    // Contextual data (next event / tasks) refreshes every minute, not every second.
+    // Contextual data (next event / tasks) refreshes every minute.
     LaunchedEffect(Unit) {
         while (true) {
             delay(60_000)
             nextEvent = calendarSource.nextEvent(nowMillis = System.currentTimeMillis())
             tasks = taskRepository.getTasks()
         }
-    }
-
-    val window = EmergencyWindow.evaluate(deadline, now)
-    LaunchedEffect(window) {
-        if (window is EmergencyWindow.Expired) refresh(reloadApps = false)
     }
 
     if (showEmergencyDialog) {
@@ -276,18 +323,19 @@ private fun ZeroPhoneApp(
     }
 
     val navController = rememberNavController()
-    NavHost(
-        navController = navController,
-        startDestination = HomeRoute,
-        enterTransition = {
-            fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 4 }
-        },
-        exitTransition = { fadeOut(tween(180)) },
-        popEnterTransition = { fadeIn(tween(220)) },
-        popExitTransition = {
-            fadeOut(tween(180)) + slideOutHorizontally(tween(220)) { it / 4 }
-        }
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavHost(
+            navController = navController,
+            startDestination = HomeRoute,
+            enterTransition = {
+                fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 4 }
+            },
+            exitTransition = { fadeOut(tween(180)) },
+            popEnterTransition = { fadeIn(tween(220)) },
+            popExitTransition = {
+                fadeOut(tween(180)) + slideOutHorizontally(tween(220)) { it / 4 }
+            }
+        ) {
         composable<HomeRoute> {
             HomeScreen(
                 apps = apps,
@@ -295,23 +343,43 @@ private fun ZeroPhoneApp(
                 selfPackage = selfPackage,
                 deviceOwner = deviceOwner,
                 appsLoading = !appsLoaded,
-                window = window,
-                nowMillis = now,
+                emergencyDeadline = deadline,
                 nextEvent = nextEvent,
                 tasks = tasks,
                 importantUnreadCount = importantUnreadCount,
                 activeMode = activeMode,
                 actionStates = actionStates,
+                notificationAccessEnabled = notificationAccessEnabled,
+                exactAlarmsDisabled = deviceOwner && exactAlarmsMissing,
                 onLaunch = { packageName -> applier.launchPackage(packageName) },
                 onOpenAllowlist = { navController.navigate(AllowlistRoute) },
                 onEmergencyUnlock = { showEmergencyDialog = true },
+                onRelockNow = {
+                    scope.launch(Dispatchers.Default) {
+                        applier.cancelEmergencyUnlock()
+                        refresh(reloadApps = false)
+                    }
+                },
                 onSetMode = { mode ->
                     scope.launch(Dispatchers.Default) {
                         applier.setActiveMode(mode)
                         refresh(reloadApps = false)
                     }
                 },
-                onQuickAction = onQuickActionIntent,
+                onQuickAction = { action ->
+                    if (!onQuickActionIntent(action)) {
+                        val message = String.format(noHandlerSnackbarFormat, actionLabels[action].orEmpty())
+                        scope.launch { snackbarHostState.showSnackbar(message) }
+                    }
+                },
+                onOpenNotificationAccessSettings = {
+                    openSettingsSafely(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                },
+                onRequestExactAlarms = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        openSettingsSafely(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                    }
+                },
                 onAddTask = { title ->
                     scope.launch(Dispatchers.Default) {
                         taskRepository.addTask(title)
@@ -340,5 +408,10 @@ private fun ZeroPhoneApp(
                 }
             )
         }
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }

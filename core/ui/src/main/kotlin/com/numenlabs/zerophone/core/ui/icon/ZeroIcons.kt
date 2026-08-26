@@ -264,6 +264,40 @@ object ZeroIcons {
         }
     }
 
+    /** Padlock — the active/restore-suspension action. */
+    val Lock: ImageVector by lazy {
+        zeroIcon("Lock") {
+            moveTo(18f, 8f)
+            horizontalLineToRelative(-1f)
+            verticalLineTo(6f)
+            curveToRelative(0f, -2.76f, -2.24f, -5f, -5f, -5f)
+            reflectiveCurveToRelative(-5f, 2.24f, -5f, 5f)
+            verticalLineToRelative(2f)
+            horizontalLineTo(6f)
+            curveToRelative(-1.1f, 0f, -2f, 0.9f, -2f, 2f)
+            verticalLineToRelative(10f)
+            curveToRelative(0f, 1.1f, 0.9f, 2f, 2f, 2f)
+            horizontalLineToRelative(12f)
+            curveToRelative(1.1f, 0f, 2f, -0.9f, 2f, -2f)
+            verticalLineTo(10f)
+            curveToRelative(0f, -1.1f, -0.9f, -2f, -2f, -2f)
+            close()
+            moveToRelative(-6f, 9f)
+            curveToRelative(-1.1f, 0f, -2f, -0.9f, -2f, -2f)
+            reflectiveCurveToRelative(0.9f, -2f, 2f, -2f)
+            reflectiveCurveToRelative(2f, 0.9f, 2f, 2f)
+            reflectiveCurveToRelative(-0.9f, 2f, -2f, 2f)
+            close()
+            moveToRelative(3.1f, -9f)
+            horizontalLineTo(8.9f)
+            verticalLineTo(6f)
+            curveToRelative(0f, -1.71f, 1.39f, -3.1f, 3.1f, -3.1f)
+            reflectiveCurveToRelative(3.1f, 1.39f, 3.1f, 3.1f)
+            verticalLineToRelative(2f)
+            close()
+        }
+    }
+
     /** Stopwatch — the emergency unlock window. */
     val Timer: ImageVector by lazy {
         zeroIcon("Timer", {

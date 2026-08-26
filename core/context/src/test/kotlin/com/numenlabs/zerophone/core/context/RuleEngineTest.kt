@@ -427,6 +427,28 @@ class RuleEngineTest {
     }
 
     @Test
+    fun `budget day follows the snapshot local epoch day not UTC`() {
+        // 22:00 UTC on day 3 is already 01:00 of day 4 at UTC+3: usage recorded
+        // for the local day must exhaust the budget even though the UTC-derived
+        // day would still be day 3 with a fresh ledger.
+        val now = 3 * 24 * 60 * 60 * 1000L + 22 * 60 * 60 * 1000L
+        val utcOffsetMillis = 3 * 60 * 60 * 1000L
+        val localDay = TimeBudgetLedger.epochDayOf(now, utcOffsetMillis)
+        val rule = Rule(
+            "budget",
+            RuleTarget.Package("game.app"),
+            RuleCondition.Always,
+            RuleDecision.Restrict(RestrictionReason.TIME_BUDGET, dailyBudgetMillis = 10_000L)
+        )
+        val environment = EvaluationEnvironment(
+            rules = listOf(rule),
+            budgetLedger = TimeBudgetLedger().withUsage("game.app", localDay, 10_000L),
+            snapshot = snapshot(now = now).copy(epochDay = localDay)
+        )
+        assertEquals(AvailabilityState.Blocked, engine.evaluate(environment, CapabilityRef.Package("game.app")))
+    }
+
+    @Test
     fun `restrict without budget is never blocked by the ledger`() {
         val now = 1_000_000L
         val state = engine.evaluate(

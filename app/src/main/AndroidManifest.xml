@@ -55,6 +55,17 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <!-- Self-update catch-up. Other packages' installs/updates are watched
+             by a runtime registration in ZeroPhoneApplication: with targetSdk
+             26+ PACKAGE_ADDED/PACKAGE_REPLACED are implicit broadcasts that a
+             manifest receiver never receives. -->
+        <receiver
+            android:name=".PackageEventsReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <!-- ReLockAlarmReceiver (com.numenlabs.zerophone.core.policy) is declared
              in the :core:policy manifest. -->
     </application>

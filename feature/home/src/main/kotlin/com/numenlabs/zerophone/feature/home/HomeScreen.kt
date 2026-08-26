@@ -48,6 +48,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,6 +69,7 @@ import com.numenlabs.zerophone.core.model.EmergencyWindow
 import com.numenlabs.zerophone.core.model.Task
 import com.numenlabs.zerophone.core.policy.PolicyApplier
 import com.numenlabs.zerophone.core.ui.icon.ZeroIcons
+import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
@@ -85,23 +87,29 @@ fun HomeScreen(
     selfPackage: String,
     deviceOwner: Boolean,
     appsLoading: Boolean,
-    window: EmergencyWindow,
-    nowMillis: Long,
+    emergencyDeadline: Long,
     nextEvent: CalendarEvent?,
     tasks: List<Task>,
     importantUnreadCount: Int,
     activeMode: String,
     actionStates: Map<QuickAction, AvailabilityState>,
+    notificationAccessEnabled: Boolean,
+    exactAlarmsDisabled: Boolean,
     onLaunch: (packageName: String) -> Unit,
     onOpenAllowlist: () -> Unit,
     onEmergencyUnlock: () -> Unit,
+    onRelockNow: () -> Unit,
     onSetMode: (mode: String) -> Unit,
     onQuickAction: (action: QuickAction) -> Unit,
+    onOpenNotificationAccessSettings: () -> Unit,
+    onRequestExactAlarms: () -> Unit,
     onAddTask: (title: String) -> Unit,
     onToggleTask: (id: String, done: Boolean) -> Unit
 ) {
-    val context = LocalContext.current
-    val activeEmergency = window as? EmergencyWindow.Active
+    // Future-only: a leftover expired deadline (e.g. admin revoked mid-window)
+    // must not render a stuck "00:00" banner and re-lock button.
+    val activeEmergency = emergencyDeadline > EmergencyWindow.NONE_DEADLINE &&
+        emergencyDeadline > System.currentTimeMillis()
 
     Column(
         modifier = Modifier
@@ -110,16 +118,7 @@ fun HomeScreen(
             .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        Text(
-            text = formatDate(context, nowMillis),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = formatClock(context, nowMillis),
-            style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        DateTimeHeading()
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(top = 2.dp)
@@ -167,27 +166,48 @@ fun HomeScreen(
                 )
             }
             AnimatedVisibility(
-                visible = activeEmergency != null,
+                visible = deviceOwner && exactAlarmsDisabled,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
-                if (activeEmergency != null) {
-                    StatusBanner(
-                        icon = ZeroIcons.Timer,
-                        text = stringResource(
-                            R.string.home_emergency_active_banner,
-                            formatRemaining(activeEmergency.remainingMillis)
-                        ),
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        onContainerColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
+                StatusBanner(
+                    icon = ZeroIcons.Warning,
+                    text = stringResource(R.string.home_exact_alarm_banner),
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    onContainerColor = MaterialTheme.colorScheme.onErrorContainer,
+                    actionLabel = stringResource(R.string.home_exact_alarm_action),
+                    onAction = onRequestExactAlarms,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            AnimatedVisibility(
+                visible = !notificationAccessEnabled,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                StatusBanner(
+                    icon = ZeroIcons.Notifications,
+                    text = stringResource(R.string.home_notification_access_banner),
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    onContainerColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    actionLabel = stringResource(R.string.home_notification_access_action),
+                    onAction = onOpenNotificationAccessSettings,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            AnimatedVisibility(
+                visible = activeEmergency,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                EmergencyCountdownBanner(
+                    deadlineMillis = emergencyDeadline,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
 
         ContextCard(
-            nowMillis = nowMillis,
             nextEvent = nextEvent,
             tasks = tasks,
             importantUnreadCount = importantUnreadCount,
@@ -264,26 +284,33 @@ fun HomeScreen(
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.home_open_allowlist), maxLines = 1)
             }
-            Button(
-                onClick = onEmergencyUnlock,
-                enabled = deviceOwner,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-            ) {
-                Icon(ZeroIcons.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = when (window) {
-                        is EmergencyWindow.Active -> stringResource(
-                            R.string.home_emergency_unlock_active,
-                            formatRemaining(window.remainingMillis)
-                        )
-                        else -> stringResource(R.string.home_emergency_unlock_button)
-                    },
-                    maxLines = 2
-                )
+            if (activeEmergency) {
+                // Early re-lock: the active window is otherwise irreversible
+                // for its whole duration.
+                Button(
+                    onClick = onRelockNow,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
+                ) {
+                    Icon(ZeroIcons.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_relock_now), maxLines = 2)
+                }
+            } else {
+                Button(
+                    onClick = onEmergencyUnlock,
+                    enabled = deviceOwner,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
+                ) {
+                    Icon(ZeroIcons.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_emergency_unlock_button), maxLines = 2)
+                }
             }
         }
     }
@@ -298,13 +325,70 @@ private fun SectionLabel(text: String) {
     )
 }
 
+/**
+ * Date + clock with an isolated one-second tick: only this heading recomposes
+ * per second, the rest of the home screen stays static.
+ */
+@Composable
+private fun DateTimeHeading() {
+    val context = LocalContext.current
+    val nowMillis by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            // Align to wall-clock second boundaries so the tick never drifts.
+            delay(1_000 - value % 1_000)
+        }
+    }
+    Text(
+        text = formatDate(context, nowMillis),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Text(
+        text = formatClock(context, nowMillis),
+        style = MaterialTheme.typography.displayLarge,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+}
+
+/**
+ * Emergency-unlock banner with a live countdown. The tick lives here (not in
+ * the parent) so the per-second recomposition stays inside this banner; the
+ * actual re-lock is driven by the persisted deadline, not by this UI.
+ */
+@Composable
+private fun EmergencyCountdownBanner(deadlineMillis: Long, modifier: Modifier = Modifier) {
+    val remainingMillis by produceState(
+        initialValue = deadlineMillis - System.currentTimeMillis(),
+        key1 = deadlineMillis
+    ) {
+        while (true) {
+            value = deadlineMillis - System.currentTimeMillis()
+            if (value <= 0L) return@produceState
+            delay(1_000 - System.currentTimeMillis() % 1_000)
+        }
+    }
+    StatusBanner(
+        icon = ZeroIcons.Timer,
+        text = stringResource(
+            R.string.home_emergency_active_banner,
+            formatRemaining(remainingMillis.coerceAtLeast(0L))
+        ),
+        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        onContainerColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = modifier
+    )
+}
+
 @Composable
 private fun StatusBanner(
     icon: ImageVector,
     text: String,
     containerColor: androidx.compose.ui.graphics.Color,
     onContainerColor: androidx.compose.ui.graphics.Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
 ) {
     Surface(
         color = containerColor,
@@ -325,8 +409,14 @@ private fun StatusBanner(
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodySmall,
-                color = onContainerColor
+                color = onContainerColor,
+                modifier = Modifier.weight(1f)
             )
+            if (actionLabel != null && onAction != null) {
+                TextButton(onClick = onAction) {
+                    Text(actionLabel, style = MaterialTheme.typography.labelMedium)
+                }
+            }
         }
     }
 }
@@ -389,13 +479,20 @@ private fun ModeSwitcher(activeMode: String, onSetMode: (String) -> Unit, modifi
 /** Useful information only: next event, important unread, tasks/reminders. */
 @Composable
 private fun ContextCard(
-    nowMillis: Long,
     nextEvent: CalendarEvent?,
     tasks: List<Task>,
     importantUnreadCount: Int,
     onAddTask: (title: String) -> Unit,
     onToggleTask: (id: String, done: Boolean) -> Unit
 ) {
+    // Minute-granularity "now" for the relative event time — enough for
+    // DateUtils.getRelativeTimeSpanString without a per-second recomposition.
+    val nowMillis by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(60_000)
+        }
+    }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.large,
@@ -692,7 +789,8 @@ private fun quickActionIcon(action: QuickAction): ImageVector = when (action) {
     QuickAction.CAMERA -> ZeroIcons.Camera
 }
 
-private fun quickActionLabel(action: QuickAction): Int = when (action) {
+/** @StringRes label of a quick action, shared with the activity-level snackbar. */
+fun quickActionLabel(action: QuickAction): Int = when (action) {
     QuickAction.CALL -> R.string.quick_action_call
     QuickAction.MESSAGE -> R.string.quick_action_message
     QuickAction.NAVIGATE -> R.string.quick_action_navigate

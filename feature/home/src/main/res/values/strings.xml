@@ -5,10 +5,16 @@
     <string name="home_device_owner_inactive">Не Device Owner: блокировка отключена</string>
     <string name="home_not_device_owner_hint">ZeroPhone не назначен Device Owner — приложения не блокируются. Инструкция по provisioning — в README.md.</string>
     <string name="home_emergency_active_banner">Экстренная разблокировка: повторная блокировка через %1$s</string>
+    <string name="home_relock_now">Заблокировать сейчас</string>
+    <string name="home_notification_access_banner">Доступ к уведомлениям выключен — счётчик важных сообщений не работает</string>
+    <string name="home_notification_access_action">Открыть настройки</string>
+    <string name="home_exact_alarm_banner">Точные будильники запрещены системой — повторная блокировка может опоздать на несколько минут</string>
+    <string name="home_exact_alarm_action">Разрешить</string>
+    <string name="home_no_handler_snackbar">Нет приложения для «%1$s»</string>
+    <string name="home_settings_unavailable">Настройки недоступны на этом устройстве</string>
     <string name="home_no_allowed_apps">Нет разрешённых приложений. Откройте управление allowlist и отметьте нужные.</string>
     <string name="home_open_allowlist">Allowlist</string>
     <string name="home_emergency_unlock_button">Экстренная разблокировка</string>
-    <string name="home_emergency_unlock_active">Разблокировано: %1$s</string>
     <string name="emergency_dialog_title">Экстренная разблокировка</string>
     <string name="emergency_dialog_text">Разблокировать все приложения на %1$d мин.? После этого блокировка будет применена автоматически.</string>
     <string name="emergency_dialog_confirm">Разблокировать</string>

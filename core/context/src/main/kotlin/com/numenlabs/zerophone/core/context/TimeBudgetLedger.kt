@@ -4,9 +4,10 @@ import kotlinx.serialization.Serializable
 
 /**
  * Pure Kotlin daily time-budget ledger for LIMITED (restricted) capabilities.
- * Usage is tracked per capability id per UTC epoch day; a new day starts a
- * fresh ledger. [TimeBudgetLedger.withUsage] collapses to a single day so the
- * persisted structure never grows.
+ * Usage is tracked per capability id per epoch day; a new day starts a fresh
+ * ledger. The engine is timezone-free: callers pass the day (normally the
+ * device-local epoch day from [ContextSnapshot]). [TimeBudgetLedger.withUsage]
+ * collapses to a single day so the persisted structure never grows.
  */
 @Serializable
 data class TimeBudgetLedger(
@@ -31,7 +32,16 @@ data class TimeBudgetLedger(
     companion object {
         const val NONE: Long = -1L
 
-        fun epochDayOf(nowMillis: Long): Long = Math.floorDiv(nowMillis, MILLIS_PER_DAY)
+        /** UTC epoch day of [nowMillis]. */
+        fun epochDayOf(nowMillis: Long): Long = epochDayOf(nowMillis, utcOffsetMillis = 0L)
+
+        /**
+         * Local epoch day of [nowMillis] for a zone with the given total UTC
+         * offset (DST included), so budget days end at local midnight rather
+         * than 00:00 UTC.
+         */
+        fun epochDayOf(nowMillis: Long, utcOffsetMillis: Long): Long =
+            Math.floorDiv(nowMillis + utcOffsetMillis, MILLIS_PER_DAY)
 
         private const val MILLIS_PER_DAY = 24L * 60L * 60L * 1000L
     }

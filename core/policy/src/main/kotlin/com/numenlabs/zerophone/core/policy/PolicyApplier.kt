@@ -17,6 +17,9 @@ import com.numenlabs.zerophone.core.context.RuleEngine
 import com.numenlabs.zerophone.core.context.SnapshotProvider
 import com.numenlabs.zerophone.core.context.TimeBudgetLedger
 import com.numenlabs.zerophone.core.model.EmergencyWindow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.Calendar
 
 /**
  * Android glue for the suspend policy. Every DevicePolicyManager call is guarded by
@@ -25,6 +28,11 @@ import com.numenlabs.zerophone.core.model.EmergencyWindow
  * [reconcile] is the single idempotent entry point used by:
  * app start/resume, alarm fire, boot, allowlist change, emergency-window expiry.
  * Persistence goes through the [PolicyRepository] interface (Preferences DataStore).
+ *
+ * Reconcile has several concurrent entry points (activity refresh, boot /
+ * re-lock / package-event receivers, the sync engine); every mutating call is
+ * serialized through [mutex] so a package event racing the re-lock alarm can
+ * never land an unsuspend after the lock pass finished.
  *
  * The contextual [RuleEngine] decides which candidate packages resolve to
  * BLOCKED; [SuspendPolicy] remains the hard guardrail that filters
@@ -35,6 +43,8 @@ class PolicyApplier(
     private val store: PolicyRepository,
     private val snapshotProvider: SnapshotProvider = SnapshotProvider.None
 ) {
+
+    private val mutex = Mutex()
 
     data class LauncherApp(
         val packageName: String,
@@ -95,27 +105,27 @@ class PolicyApplier(
         appContext.startActivity(launchIntent)
     }
 
-    suspend fun setAllowed(packageName: String, allowed: Boolean) {
+    suspend fun setAllowed(packageName: String, allowed: Boolean) = mutex.withLock {
         val updated = store.getAllowlist().toMutableSet()
         val changed = if (allowed) updated.add(packageName) else updated.remove(packageName)
         if (changed) store.setAllowlist(updated)
-        reconcile()
+        reconcileInternal()
     }
 
     /** Active mode id (defaults to [com.numenlabs.zerophone.core.context.ModeIds.WORK]). */
     suspend fun getActiveMode(): String = store.getActiveMode()
 
     /** Switches the active mode and immediately re-evaluates the policy. */
-    suspend fun setActiveMode(mode: String) {
+    suspend fun setActiveMode(mode: String) = mutex.withLock {
         store.setActiveMode(mode)
-        reconcile()
+        reconcileInternal()
     }
 
     /**
      * Seeds the mode-catalog rules on first use. Idempotent: an existing
      * (possibly user-configured) ruleset is never overwritten.
      */
-    suspend fun ensureDefaultRules() {
+    suspend fun ensureDefaultRules() = mutex.withLock {
         if (store.getRules().isEmpty()) store.setRules(ModeCatalog.seedRules())
     }
 
@@ -127,22 +137,25 @@ class PolicyApplier(
      * (the grant still resolves in [availabilityOf]) — it just has nothing to
      * enforce on the suspend side, same safe no-op as everywhere else.
      */
-    suspend fun grantCapability(capabilityId: String, durationMillis: Long) {
+    suspend fun grantCapability(capabilityId: String, durationMillis: Long) = mutex.withLock {
         val now = System.currentTimeMillis()
         val deadline = now + durationMillis
         val grants = store.getGrants().filter { it.isActive(now) } + ManualGrant(capabilityId, deadline)
         store.setGrants(grants)
         scheduleNextDeadline(now, deadline)
-        reconcile()
+        reconcileInternal()
     }
 
-    /** Records usage of a capability against its daily time budget. */
+    /** Records usage of a capability against its daily (device-local) time budget. */
     suspend fun recordCapabilityUsage(capabilityId: String, usedMillis: Long) {
         if (usedMillis <= 0L) return
         val now = System.currentTimeMillis()
+        val calendar = Calendar.getInstance().apply { timeInMillis = now }
+        val utcOffsetMillis =
+            (calendar.get(Calendar.ZONE_OFFSET) + calendar.get(Calendar.DST_OFFSET)).toLong()
         val ledger = store.getTimeBudgetLedger()
         store.setTimeBudgetLedger(
-            ledger.withUsage(capabilityId, TimeBudgetLedger.epochDayOf(now), usedMillis)
+            ledger.withUsage(capabilityId, TimeBudgetLedger.epochDayOf(now, utcOffsetMillis), usedMillis)
         )
     }
 
@@ -151,12 +164,43 @@ class PolicyApplier(
         RuleEngine.evaluate(evaluationEnvironment(getAllowlist()), capability)
 
     /**
-     * Idempotent policy application. Reads the persisted emergency deadline:
+     * Idempotent policy application (serialized with every other mutating
+     * call). Reads the persisted emergency deadline:
      *  - active window -> keep unlocked, (re-)schedule the re-lock alarm;
      *  - no window / expired window -> clear deadline, cancel alarm, suspend blockables.
      */
-    suspend fun reconcile(): ReconcileResult {
-        if (!isDeviceOwner()) return ReconcileResult.NotDeviceOwner
+    suspend fun reconcile(): ReconcileResult = mutex.withLock { reconcileInternal() }
+
+    suspend fun startEmergencyUnlock(durationMillis: Long? = null): Boolean = mutex.withLock {
+        if (!isDeviceOwner()) return@withLock false
+        val duration = durationMillis ?: store.getEmergencyDurationMillis()
+        val now = System.currentTimeMillis()
+        val deadline = now + duration
+        store.setEmergencyDeadline(deadline)
+        unsuspendBlockables()
+        scheduleNextDeadline(now, deadline)
+        true
+    }
+
+    /**
+     * Ends an active emergency window early ("Заблокировать сейчас"): clears
+     * the deadline and re-applies the suspend policy immediately. Idempotent —
+     * with no active window it is just a plain reconcile.
+     */
+    suspend fun cancelEmergencyUnlock() = mutex.withLock {
+        store.setEmergencyDeadline(EmergencyWindow.NONE_DEADLINE)
+        reconcileInternal()
+    }
+
+    private suspend fun reconcileInternal(): ReconcileResult {
+        if (!isDeviceOwner()) {
+            // Admin revoked mid-window: the deadline is meaningless without
+            // Device Owner — clear it so the UI does not show a stuck window.
+            if (store.getEmergencyDeadline() > System.currentTimeMillis()) {
+                store.setEmergencyDeadline(EmergencyWindow.NONE_DEADLINE)
+            }
+            return ReconcileResult.NotDeviceOwner
+        }
         pruneExpiredGrants()
         val deadline = store.getEmergencyDeadline()
         return when (val window = EmergencyWindow.evaluate(deadline, System.currentTimeMillis())) {
@@ -167,17 +211,6 @@ class PolicyApplier(
             }
             EmergencyWindow.None, EmergencyWindow.Expired -> lock()
         }
-    }
-
-    suspend fun startEmergencyUnlock(durationMillis: Long? = null): Boolean {
-        if (!isDeviceOwner()) return false
-        val duration = durationMillis ?: store.getEmergencyDurationMillis()
-        val now = System.currentTimeMillis()
-        val deadline = now + duration
-        store.setEmergencyDeadline(deadline)
-        unsuspendBlockables()
-        scheduleNextDeadline(now, deadline)
-        return true
     }
 
     /**
