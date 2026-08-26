@@ -13,9 +13,14 @@ interface TaskRepository {
 
     suspend fun getTasks(): List<Task>
 
-    suspend fun addTask(title: String)
+    suspend fun addTask(title: String, dueAtMillis: Long? = null)
 
     suspend fun setTaskDone(id: String, done: Boolean)
+
+    /** Rewrites title and due time; blank titles are ignored. */
+    suspend fun updateTask(id: String, title: String, dueAtMillis: Long?)
+
+    suspend fun deleteTask(id: String)
 
     suspend fun clearCompleted()
 
@@ -29,12 +34,20 @@ class InMemoryTaskRepository : TaskRepository {
 
     override suspend fun getTasks(): List<Task> = tasks.toList()
 
-    override suspend fun addTask(title: String) {
-        tasks = TaskOps.add(tasks, title, generateId(), System.currentTimeMillis())
+    override suspend fun addTask(title: String, dueAtMillis: Long?) {
+        tasks = TaskOps.add(tasks, title, generateId(), System.currentTimeMillis(), dueAtMillis)
     }
 
     override suspend fun setTaskDone(id: String, done: Boolean) {
         tasks = TaskOps.setDone(tasks, id, done)
+    }
+
+    override suspend fun updateTask(id: String, title: String, dueAtMillis: Long?) {
+        tasks = TaskOps.update(tasks, id, title, dueAtMillis)
+    }
+
+    override suspend fun deleteTask(id: String) {
+        tasks = TaskOps.remove(tasks, id)
     }
 
     override suspend fun clearCompleted() {

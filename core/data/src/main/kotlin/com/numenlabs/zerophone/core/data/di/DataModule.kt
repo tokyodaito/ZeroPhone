@@ -15,6 +15,7 @@ import com.numenlabs.zerophone.core.data.sync.SyncServerConfig
 import com.numenlabs.zerophone.core.data.sync.SyncTransport
 import com.numenlabs.zerophone.core.data.tasks.DataStoreTaskRepository
 import com.numenlabs.zerophone.core.data.tasks.TaskRepository
+import com.numenlabs.zerophone.core.data.usage.AndroidUsageStatsSource
 import com.numenlabs.zerophone.core.policy.PolicyApplier
 import com.numenlabs.zerophone.core.policy.PolicyRepository
 import dagger.Module
@@ -53,6 +54,11 @@ object DataModule {
     @Singleton
     fun provideSnapshotProvider(calendarSource: CalendarSource): SnapshotProvider =
         AndroidSnapshotProvider(calendarSource)
+
+    @Provides
+    @Singleton
+    fun provideUsageStatsSource(@ApplicationContext context: Context): AndroidUsageStatsSource =
+        AndroidUsageStatsSource(context)
 
     @Provides
     @Singleton

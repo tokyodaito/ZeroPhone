@@ -13,7 +13,9 @@ import com.numenlabs.zerophone.core.context.CapabilityRef
 import com.numenlabs.zerophone.core.context.EvaluationEnvironment
 import com.numenlabs.zerophone.core.context.ManualGrant
 import com.numenlabs.zerophone.core.context.ModeCatalog
+import com.numenlabs.zerophone.core.context.Rule
 import com.numenlabs.zerophone.core.context.RuleEngine
+import com.numenlabs.zerophone.core.context.RuleSchedule
 import com.numenlabs.zerophone.core.context.SnapshotProvider
 import com.numenlabs.zerophone.core.context.TimeBudgetLedger
 import com.numenlabs.zerophone.core.model.EmergencyWindow
@@ -129,6 +131,67 @@ class PolicyApplier(
         if (store.getRules().isEmpty()) store.setRules(ModeCatalog.seedRules())
     }
 
+    /** Persisted rules (seeded by [ensureDefaultRules], edited in settings). */
+    suspend fun getRules(): List<Rule> = store.getRules()
+
+    /** Replaces the ruleset and immediately re-evaluates the policy. */
+    suspend fun updateRules(rules: List<Rule>) = mutex.withLock {
+        store.setRules(rules)
+        reconcileInternal()
+    }
+
+    /**
+     * States and remaining budgets of the logical capabilities in one pass —
+     * a single [EvaluationEnvironment] (and therefore a single context
+     * snapshot) is shared by all evaluations.
+     */
+    data class LogicalSnapshot(
+        val states: Map<String, AvailabilityState> = emptyMap(),
+        val budgetRemainingMillis: Map<String, Long?> = emptyMap()
+    )
+
+    /** One-pass availability + budget snapshot for quick actions. */
+    suspend fun logicalSnapshot(capabilityIds: List<String>): LogicalSnapshot {
+        val environment = evaluationEnvironment(getAllowlist())
+        val refs = capabilityIds.map { CapabilityRef.Logical(it) }
+        val states = RuleEngine.evaluateAll(environment, refs)
+        val budgets = capabilityIds.associateWith { id ->
+            RuleEngine.restrictBudget(environment, CapabilityRef.Logical(id))
+        }
+        return LogicalSnapshot(
+            states = states.mapKeys { (ref, _) -> (ref as CapabilityRef.Logical).name },
+            budgetRemainingMillis = budgets
+        )
+    }
+
+    /**
+     * Remaining daily budget for a capability whose winning rule carries one
+     * (null otherwise) — drives the "осталось N мин" hint on quick actions.
+     */
+    suspend fun budgetRemainingFor(capability: CapabilityRef): Long? =
+        RuleEngine.restrictBudget(evaluationEnvironment(getAllowlist()), capability)
+
+    /**
+     * Sets the absolute foreground usage of a capability for the current
+     * device-local day. Idempotent: callers re-measure the whole day each
+     * pass, so process restarts, racing refreshes and midnight crossings
+     * cannot double-count or lose usage.
+     */
+    suspend fun setCapabilityUsage(capabilityId: String, usedMillis: Long) {
+        if (usedMillis < 0L) return
+        val now = System.currentTimeMillis()
+        val calendar = Calendar.getInstance().apply { timeInMillis = now }
+        val utcOffsetMillis =
+            (calendar.get(Calendar.ZONE_OFFSET) + calendar.get(Calendar.DST_OFFSET)).toLong()
+        store.setTimeBudgetLedger(
+            store.getTimeBudgetLedger().withAbsoluteUsage(
+                capabilityId,
+                TimeBudgetLedger.epochDayOf(now, utcOffsetMillis),
+                usedMillis
+            )
+        )
+    }
+
     /**
      * Temporary per-capability unlock ("временно доступна"): persists a
      * [ManualGrant] that outranks rules until its deadline, re-evaluates the
@@ -144,19 +207,6 @@ class PolicyApplier(
         store.setGrants(grants)
         scheduleNextDeadline(now, deadline)
         reconcileInternal()
-    }
-
-    /** Records usage of a capability against its daily (device-local) time budget. */
-    suspend fun recordCapabilityUsage(capabilityId: String, usedMillis: Long) {
-        if (usedMillis <= 0L) return
-        val now = System.currentTimeMillis()
-        val calendar = Calendar.getInstance().apply { timeInMillis = now }
-        val utcOffsetMillis =
-            (calendar.get(Calendar.ZONE_OFFSET) + calendar.get(Calendar.DST_OFFSET)).toLong()
-        val ledger = store.getTimeBudgetLedger()
-        store.setTimeBudgetLedger(
-            ledger.withUsage(capabilityId, TimeBudgetLedger.epochDayOf(now, utcOffsetMillis), usedMillis)
-        )
     }
 
     /** Current engine state for an arbitrary capability (packages and logical). */
@@ -199,17 +249,43 @@ class PolicyApplier(
             if (store.getEmergencyDeadline() > System.currentTimeMillis()) {
                 store.setEmergencyDeadline(EmergencyWindow.NONE_DEADLINE)
             }
+            // Nothing to enforce — do not keep waking the process for rule
+            // boundaries that cannot change anything.
+            ReLockScheduler.cancelEvaluation(appContext)
             return ReconcileResult.NotDeviceOwner
         }
         pruneExpiredGrants()
         val deadline = store.getEmergencyDeadline()
-        return when (val window = EmergencyWindow.evaluate(deadline, System.currentTimeMillis())) {
+        val result = when (val window = EmergencyWindow.evaluate(deadline, System.currentTimeMillis())) {
             is EmergencyWindow.Active -> {
                 ReLockScheduler.schedule(appContext, deadline)
                 unsuspendBlockables()
                 ReconcileResult.EmergencyActive(window.remainingMillis)
             }
             EmergencyWindow.None, EmergencyWindow.Expired -> lock()
+        }
+        scheduleNextRuleEvaluation()
+        return result
+    }
+
+    /**
+     * Keeps a reconcile alarm at the next time-window boundary so rules like
+     * "block from 22:00" take effect without a launcher resume. No time
+     * windows — no alarm.
+     */
+    private suspend fun scheduleNextRuleEvaluation() {
+        val now = System.currentTimeMillis()
+        val calendar = Calendar.getInstance().apply { timeInMillis = now }
+        val zone = calendar.timeZone
+        val utcOffsetMillis =
+            (calendar.get(Calendar.ZONE_OFFSET) + calendar.get(Calendar.DST_OFFSET)).toLong()
+        val next = RuleSchedule.nextBoundaryMillis(store.getRules(), now, utcOffsetMillis) { millis ->
+            zone.getOffset(millis).toLong()
+        }
+        if (next != null) {
+            ReLockScheduler.scheduleEvaluation(appContext, next)
+        } else {
+            ReLockScheduler.cancelEvaluation(appContext)
         }
     }
 
@@ -234,23 +310,40 @@ class PolicyApplier(
     }
 
     private suspend fun lock(): ReconcileResult.Locked {
-        store.setEmergencyDeadline(EmergencyWindow.NONE_DEADLINE)
+        val deadline = store.getEmergencyDeadline()
+        if (deadline != EmergencyWindow.NONE_DEADLINE) {
+            store.setEmergencyDeadline(EmergencyWindow.NONE_DEADLINE)
+        }
         ReLockScheduler.cancel(appContext)
         val toSuspend = computeSuspendSet()
-        // Release packages we suspended earlier that left the suspend set
-        // (e.g. just allowlisted) so allowlist changes unblock immediately.
-        val toRelease = SuspendPolicy.computeReleaseSet(store.getLastSuspended(), toSuspend)
-        setPackagesSuspendedSafely(toRelease, suspended = false)
-        setPackagesSuspendedSafely(toSuspend, suspended = true)
-        store.setLastSuspended(toSuspend)
+        val lastSuspended = store.getLastSuspended()
+        // Dirty-check: suspension survives reboots and resumes, so when the
+        // computed set equals the last APPLIED one the device state is already
+        // correct — skip the DPM IPC and the DataStore write. A partially
+        // applied previous pass is recorded as such, so failed packages are
+        // retried on the next reconcile.
+        if (toSuspend != lastSuspended) {
+            // Release packages we suspended earlier that left the suspend set
+            // (e.g. just allowlisted) so allowlist changes unblock immediately.
+            val toRelease = SuspendPolicy.computeReleaseSet(lastSuspended, toSuspend)
+            setPackagesSuspendedSafely(toRelease, suspended = false)
+            val applied = setPackagesSuspendedSafely(toSuspend, suspended = true)
+            store.setLastSuspended(applied)
+        }
         return ReconcileResult.Locked(toSuspend)
     }
 
     private suspend fun unsuspendBlockables() {
         // Unsuspension deliberately bypasses the engine: an emergency window
-        // releases every package the guardrail could ever have suspended.
+        // releases every package the guardrail could ever have suspended —
+        // unconditionally, as a catch-all for any state drift (a crash
+        // between the DPM write and the lastSuspended bookkeeping, external
+        // interference, ...).
         val toUnsuspend = fullBlockableSet() + store.getLastSuspended()
         setPackagesSuspendedSafely(toUnsuspend, suspended = false)
+        // Clear so the following lock() dirty-check does not mistake the
+        // pre-window state for the current (unlocked) one.
+        store.setLastSuspended(emptySet())
     }
 
     /** Every non-protected launchable package, ignoring allowlist and engine state. */
@@ -331,10 +424,13 @@ class PolicyApplier(
 
     /**
      * Applies suspension in one batch, retrying failed packages individually.
-     * Packages whose suspension throws are skipped (treated as protected) — never fatal.
+     * Packages whose suspension throws are skipped (treated as protected) —
+     * never fatal. Returns the packages actually applied, so the caller's
+     * bookkeeping only records reality: a partially applied set differs from
+     * the target and is retried on the next reconcile.
      */
-    private fun setPackagesSuspendedSafely(packages: Set<String>, suspended: Boolean) {
-        if (packages.isEmpty()) return
+    private fun setPackagesSuspendedSafely(packages: Set<String>, suspended: Boolean): Set<String> {
+        if (packages.isEmpty()) return emptySet()
         val failed: List<String> = try {
             val failedNames = devicePolicyManager.setPackagesSuspended(
                 adminComponent, packages.toTypedArray(), suspended
@@ -343,14 +439,17 @@ class PolicyApplier(
         } catch (_: Exception) {
             packages.toList()
         }
+        val applied = (packages - failed.toSet()).toMutableSet()
         for (packageName in failed) {
             try {
                 devicePolicyManager.setPackagesSuspended(
                     adminComponent, arrayOf(packageName), suspended
                 )
+                applied.add(packageName)
             } catch (_: Exception) {
                 // Package refuses suspension — skip it (protected).
             }
         }
+        return applied
     }
 }

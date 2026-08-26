@@ -52,4 +52,32 @@ class TaskOpsTest {
         assertEquals(listOf("soon", "late", "undated"), pending.map { it.id })
         assertTrue(pending.none { it.done })
     }
+
+    @Test
+    fun `add accepts an optional due time`() {
+        val tasks = TaskOps.add(emptyList(), "Дедлайн", "t1", nowMillis = 1L, dueAtMillis = 500L)
+        assertEquals(500L, tasks.single().dueAtMillis)
+    }
+
+    @Test
+    fun `update rewrites title and due of the target task only`() {
+        val tasks = listOf(Task("t1", "Старое"), Task("t2", "Другая", dueAtMillis = 100L))
+        val updated = TaskOps.update(tasks, "t1", "  Новое  ", dueAtMillis = 900L)
+        assertEquals(Task("t1", "Новое", dueAtMillis = 900L), updated[0])
+        assertEquals(Task("t2", "Другая", dueAtMillis = 100L), updated[1])
+    }
+
+    @Test
+    fun `update ignores blank titles and unknown ids`() {
+        val tasks = listOf(Task("t1", "Есть"))
+        assertEquals(tasks, TaskOps.update(tasks, "t1", "   ", dueAtMillis = null))
+        assertEquals(tasks, TaskOps.update(tasks, "missing", "Новое", dueAtMillis = null))
+    }
+
+    @Test
+    fun `remove deletes only the target task`() {
+        val tasks = listOf(Task("t1", "A"), Task("t2", "B"))
+        assertEquals(listOf(Task("t2", "B")), TaskOps.remove(tasks, "t1"))
+        assertEquals(tasks, TaskOps.remove(tasks, "missing"))
+    }
 }

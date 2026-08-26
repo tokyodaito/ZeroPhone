@@ -8,9 +8,11 @@ import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 /**
- * Fired by the AlarmManager when the emergency-unlock window ends.
- * Re-applies the suspend policy idempotently (reconcile is safe to run at any time:
- * it re-checks the persisted deadline, clears it and re-suspends the blockable set).
+ * Fired by the AlarmManager when the emergency-unlock window ends
+ * ([ACTION_RE_LOCK]) or when a rule time-window boundary is reached
+ * ([ACTION_REEVALUATE]). Re-applies the suspend policy idempotently
+ * (reconcile is safe to run at any time: it re-checks the persisted
+ * deadline, clears it and re-suspends the blockable set).
  */
 @AndroidEntryPoint
 class ReLockAlarmReceiver : BroadcastReceiver() {
@@ -19,7 +21,7 @@ class ReLockAlarmReceiver : BroadcastReceiver() {
     lateinit var applier: PolicyApplier
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != ACTION_RE_LOCK) return
+        if (intent.action != ACTION_RE_LOCK && intent.action != ACTION_REEVALUATE) return
         val pendingResult = goAsync()
         Thread {
             try {
@@ -34,5 +36,6 @@ class ReLockAlarmReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_RE_LOCK = "com.numenlabs.zerophone.action.RE_LOCK"
+        const val ACTION_REEVALUATE = "com.numenlabs.zerophone.action.REEVALUATE"
     }
 }

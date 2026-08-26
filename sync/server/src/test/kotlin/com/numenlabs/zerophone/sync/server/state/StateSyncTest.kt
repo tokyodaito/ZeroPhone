@@ -222,27 +222,39 @@ class StateSyncTest {
         stateApp(tokens, StateStore(newDir().resolve("state.json")))
 
         // Both devices push from the same base revision at the same moment.
-        val responses = coroutineScope {
-            val fromPhone = async {
-                putState(client, SyncEndpoints.STATE, phone.token, 0, stateWith("phone-feature"))
-            }
-            val fromDesktop = async {
-                putState(client, SyncEndpoints.STATE, desktop.token, 0, stateWith("desktop-feature"))
-            }
-            listOf(fromPhone.await(), fromDesktop.await())
+        // WHICH writer wins is nondeterministic — the rebase below must use
+        // the actual loser, not a hardcoded one.
+        data class Writer(val token: String, val feature: String, val response: HttpResponse)
+
+        val writers = coroutineScope {
+            listOf(
+                async {
+                    Writer(
+                        phone.token, "phone-feature",
+                        putState(client, SyncEndpoints.STATE, phone.token, 0, stateWith("phone-feature"))
+                    )
+                },
+                async {
+                    Writer(
+                        desktop.token, "desktop-feature",
+                        putState(client, SyncEndpoints.STATE, desktop.token, 0, stateWith("desktop-feature"))
+                    )
+                }
+            ).map { it.await() }
         }
 
-        val ok = responses.filter { it.status.isSuccess() }
-        val conflict = responses.filter { it.status == HttpStatusCode.Conflict }
+        val ok = writers.filter { it.response.status.isSuccess() }
+        val losers = writers.filter { it.response.status == HttpStatusCode.Conflict }
         assertEquals("exactly one racing write wins", 1, ok.size)
-        assertEquals("the loser deterministically conflicts", 1, conflict.size)
+        assertEquals("the loser deterministically conflicts", 1, losers.size)
 
         // The loser rebases its intended change on the fresh state from the
         // 409 body and pushes again — both updates end up in the document.
-        val fresh = decodeEnvelope(conflict.single())
-        val loserCapabilities = fresh.state.policy.capabilities.map { it.id } + "desktop-feature"
+        val loser = losers.single()
+        val fresh = decodeEnvelope(loser.response)
+        val loserCapabilities = fresh.state.policy.capabilities.map { it.id } + loser.feature
         val rebased = putState(
-            client, SyncEndpoints.STATE, desktop.token,
+            client, SyncEndpoints.STATE, loser.token,
             baseRevision = fresh.revision,
             state = stateWith(*loserCapabilities.toTypedArray()),
             hint = "rebase",

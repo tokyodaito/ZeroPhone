@@ -29,6 +29,16 @@ data class TimeBudgetLedger(
         return TimeBudgetLedger(epochDay = onEpochDay, usedMillis = merged)
     }
 
+    /**
+     * Returns a ledger for [onEpochDay] with the usage of [capabilityId] set
+     * to exactly [millis] (idempotent absolute write — callers re-measure the
+     * whole day on every pass instead of accumulating deltas).
+     */
+    fun withAbsoluteUsage(capabilityId: String, onEpochDay: Long, millis: Long): TimeBudgetLedger {
+        val base = if (epochDay == onEpochDay) usedMillis else emptyMap()
+        return TimeBudgetLedger(epochDay = onEpochDay, usedMillis = base + (capabilityId to millis))
+    }
+
     companion object {
         const val NONE: Long = -1L
 

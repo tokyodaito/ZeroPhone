@@ -67,6 +67,7 @@ dependencies {
     implementation(projects.core.ui)
     implementation(projects.feature.home)
     implementation(projects.feature.allowlist)
+    implementation(projects.feature.settings)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

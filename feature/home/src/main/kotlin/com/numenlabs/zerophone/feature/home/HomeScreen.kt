@@ -10,6 +10,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -38,6 +39,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -53,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -67,6 +70,7 @@ import com.numenlabs.zerophone.core.context.ModeIds
 import com.numenlabs.zerophone.core.model.CalendarEvent
 import com.numenlabs.zerophone.core.model.EmergencyWindow
 import com.numenlabs.zerophone.core.model.Task
+import com.numenlabs.zerophone.core.model.TaskOps
 import com.numenlabs.zerophone.core.policy.PolicyApplier
 import com.numenlabs.zerophone.core.ui.icon.ZeroIcons
 import kotlinx.coroutines.delay
@@ -93,18 +97,26 @@ fun HomeScreen(
     importantUnreadCount: Int,
     activeMode: String,
     actionStates: Map<QuickAction, AvailabilityState>,
+    budgetRemaining: Map<QuickAction, Long?>,
     notificationAccessEnabled: Boolean,
     exactAlarmsDisabled: Boolean,
+    usageTrackingMissing: Boolean,
     onLaunch: (packageName: String) -> Unit,
     onOpenAllowlist: () -> Unit,
+    onOpenSettings: () -> Unit,
     onEmergencyUnlock: () -> Unit,
     onRelockNow: () -> Unit,
     onSetMode: (mode: String) -> Unit,
     onQuickAction: (action: QuickAction) -> Unit,
+    onGrantCapability: (action: QuickAction) -> Unit,
     onOpenNotificationAccessSettings: () -> Unit,
     onRequestExactAlarms: () -> Unit,
+    onOpenUsageAccessSettings: () -> Unit,
     onAddTask: (title: String) -> Unit,
-    onToggleTask: (id: String, done: Boolean) -> Unit
+    onToggleTask: (id: String, done: Boolean) -> Unit,
+    onUpdateTask: (id: String, title: String, dueAtMillis: Long?) -> Unit,
+    onDeleteTask: (id: String) -> Unit,
+    onClearCompleted: () -> Unit
 ) {
     // Future-only: a leftover expired deadline (e.g. admin revoked mid-window)
     // must not render a stuck "00:00" banner and re-lock button.
@@ -136,8 +148,16 @@ fun HomeScreen(
                 else stringResource(R.string.home_device_owner_inactive),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (deviceOwner) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f)
             )
+            IconButton(onClick = onOpenSettings) {
+                Icon(
+                    imageVector = ZeroIcons.Settings,
+                    contentDescription = stringResource(R.string.home_open_settings_desc),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         ModeSwitcher(
@@ -181,6 +201,21 @@ fun HomeScreen(
                 )
             }
             AnimatedVisibility(
+                visible = deviceOwner && usageTrackingMissing,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                StatusBanner(
+                    icon = ZeroIcons.Timer,
+                    text = stringResource(R.string.home_usage_access_banner),
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    onContainerColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    actionLabel = stringResource(R.string.home_usage_access_action),
+                    onAction = onOpenUsageAccessSettings,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            AnimatedVisibility(
                 visible = !notificationAccessEnabled,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
@@ -212,7 +247,10 @@ fun HomeScreen(
             tasks = tasks,
             importantUnreadCount = importantUnreadCount,
             onAddTask = onAddTask,
-            onToggleTask = onToggleTask
+            onToggleTask = onToggleTask,
+            onUpdateTask = onUpdateTask,
+            onDeleteTask = onDeleteTask,
+            onClearCompleted = onClearCompleted
         )
 
         Spacer(Modifier.height(16.dp))
@@ -220,7 +258,9 @@ fun HomeScreen(
         Spacer(Modifier.height(8.dp))
         QuickActionsRow(
             actionStates = actionStates,
-            onQuickAction = onQuickAction
+            budgetRemaining = budgetRemaining,
+            onQuickAction = onQuickAction,
+            onGrantCapability = onGrantCapability
         )
 
         val visibleApps = apps.filter {
@@ -483,7 +523,10 @@ private fun ContextCard(
     tasks: List<Task>,
     importantUnreadCount: Int,
     onAddTask: (title: String) -> Unit,
-    onToggleTask: (id: String, done: Boolean) -> Unit
+    onToggleTask: (id: String, done: Boolean) -> Unit,
+    onUpdateTask: (id: String, title: String, dueAtMillis: Long?) -> Unit,
+    onDeleteTask: (id: String) -> Unit,
+    onClearCompleted: () -> Unit
 ) {
     // Minute-granularity "now" for the relative event time — enough for
     // DateUtils.getRelativeTimeSpanString without a per-second recomposition.
@@ -549,7 +592,15 @@ private fun ContextCard(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            TaskList(tasks = tasks, onAddTask = onAddTask, onToggleTask = onToggleTask)
+            TaskList(
+                nowMillis = nowMillis,
+                tasks = tasks,
+                onAddTask = onAddTask,
+                onToggleTask = onToggleTask,
+                onUpdateTask = onUpdateTask,
+                onDeleteTask = onDeleteTask,
+                onClearCompleted = onClearCompleted
+            )
         }
     }
 }
@@ -576,11 +627,35 @@ private fun ContextIcon(icon: ImageVector) {
 
 @Composable
 private fun TaskList(
+    nowMillis: Long,
     tasks: List<Task>,
     onAddTask: (title: String) -> Unit,
-    onToggleTask: (id: String, done: Boolean) -> Unit
+    onToggleTask: (id: String, done: Boolean) -> Unit,
+    onUpdateTask: (id: String, title: String, dueAtMillis: Long?) -> Unit,
+    onDeleteTask: (id: String) -> Unit,
+    onClearCompleted: () -> Unit
 ) {
     var newTaskTitle by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Task?>(null) }
+
+    editing?.let { task ->
+        TaskEditDialog(
+            task = task,
+            nowMillis = nowMillis,
+            onSave = { title, due ->
+                onUpdateTask(task.id, title, due)
+                editing = null
+            },
+            onDelete = {
+                onDeleteTask(task.id)
+                editing = null
+            },
+            onDismiss = { editing = null }
+        )
+    }
+
+    val doneCount = tasks.count { it.done }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = ZeroIcons.TaskAlt,
@@ -591,10 +666,17 @@ private fun TaskList(
         Spacer(Modifier.width(8.dp))
         Text(
             text = stringResource(R.string.home_tasks_title),
-            style = MaterialTheme.typography.titleSmall
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.weight(1f)
         )
+        if (doneCount > 0) {
+            TextButton(onClick = onClearCompleted) {
+                Text(stringResource(R.string.home_clear_completed, doneCount))
+            }
+        }
     }
-    val pending = tasks.filter { !it.done }.take(MAX_TASKS_SHOWN)
+    val pending = remember(tasks) { TaskOps.pending(tasks) }
+    val visible = if (expanded) pending else pending.take(COLLAPSED_TASKS)
     if (pending.isEmpty()) {
         Text(
             text = stringResource(R.string.home_no_tasks),
@@ -603,19 +685,53 @@ private fun TaskList(
             modifier = Modifier.padding(start = 24.dp)
         )
     } else {
-        pending.forEach { task ->
+        visible.forEach { task ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(start = 12.dp)
+                modifier = Modifier
+                    .padding(start = 4.dp)
+                    .clickable { editing = task }
             ) {
                 Checkbox(
                     checked = false,
                     onCheckedChange = { onToggleTask(task.id, true) },
                     modifier = Modifier.size(40.dp)
                 )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    task.dueAtMillis?.let { due ->
+                        Text(
+                            text = stringResource(
+                                R.string.home_task_due_short,
+                                formatDue(due, nowMillis)
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (due <= nowMillis) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                IconButton(onClick = { onDeleteTask(task.id) }) {
+                    Icon(
+                        imageVector = ZeroIcons.Close,
+                        contentDescription = stringResource(R.string.home_task_delete_desc),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+        if (pending.size > COLLAPSED_TASKS) {
+            TextButton(
+                onClick = { expanded = !expanded },
+                modifier = Modifier.padding(start = 8.dp)
+            ) {
                 Text(
-                    text = task.title,
-                    style = MaterialTheme.typography.bodyMedium
+                    if (expanded) stringResource(R.string.home_task_show_less)
+                    else stringResource(R.string.home_task_show_more, pending.size - COLLAPSED_TASKS)
                 )
             }
         }
@@ -648,7 +764,9 @@ private fun TaskList(
 @Composable
 private fun QuickActionsRow(
     actionStates: Map<QuickAction, AvailabilityState>,
-    onQuickAction: (QuickAction) -> Unit
+    budgetRemaining: Map<QuickAction, Long?>,
+    onQuickAction: (QuickAction) -> Unit,
+    onGrantCapability: (QuickAction) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -661,7 +779,9 @@ private fun QuickActionsRow(
             QuickActionCard(
                 action = action,
                 enabled = state != null && state.allowsQuickAction,
-                onClick = { onQuickAction(action) }
+                budgetRemainingMillis = budgetRemaining[action],
+                onClick = { onQuickAction(action) },
+                onLongPress = { onGrantCapability(action) }
             )
         }
     }
@@ -671,7 +791,9 @@ private fun QuickActionsRow(
 private fun QuickActionCard(
     action: QuickAction,
     enabled: Boolean,
-    onClick: () -> Unit
+    budgetRemainingMillis: Long?,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -680,20 +802,26 @@ private fun QuickActionCard(
         label = "quickActionPressScale"
     )
     Surface(
-        onClick = onClick,
-        enabled = enabled,
         shape = MaterialTheme.shapes.medium,
         color = if (enabled) MaterialTheme.colorScheme.surfaceContainerHigh
         else MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = if (enabled) MaterialTheme.colorScheme.onSurface
         else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-        interactionSource = interactionSource,
         modifier = Modifier
             .widthIn(min = 88.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
+            .clip(MaterialTheme.shapes.medium)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                // Always interactive: a long-press grant must work even on a
+                // blocked card (e.g. an exhausted daily budget).
+                onClick = { if (enabled) onClick() },
+                onLongClick = onLongPress
+            )
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -723,6 +851,22 @@ private fun QuickActionCard(
                 style = MaterialTheme.typography.labelMedium,
                 textAlign = TextAlign.Center
             )
+            if (budgetRemainingMillis != null) {
+                Text(
+                    text = if (budgetRemainingMillis > 0L) {
+                        stringResource(
+                            R.string.home_budget_remaining,
+                            ((budgetRemainingMillis + 59_999L) / 60_000L).toInt()
+                        )
+                    } else {
+                        stringResource(R.string.home_budget_exhausted)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (budgetRemainingMillis > 0L) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -818,4 +962,4 @@ private fun formatEventTime(nowMillis: Long, eventMillis: Long): String =
         android.text.format.DateUtils.MINUTE_IN_MILLIS
     ).toString()
 
-private const val MAX_TASKS_SHOWN = 3
+private const val COLLAPSED_TASKS = 5

@@ -67,6 +67,21 @@ object RuleEngine {
         capabilities: Iterable<CapabilityRef>
     ): Map<CapabilityRef, AvailabilityState> = capabilities.associateWith { evaluate(environment, it) }
 
+    /**
+     * Remaining daily budget for a restricted capability (budget minus the
+     * ledger's usage for the snapshot day), or null when the winning rule
+     * carries no budget or an active grant already unlocked the capability
+     * (no budget hint is shown while a grant holds). Zero when exhausted.
+     */
+    fun restrictBudget(environment: EvaluationEnvironment, capability: CapabilityRef): Long? {
+        val now = environment.snapshot.nowMillis
+        if (environment.grants.any { it.matches(capability) && it.isActive(now) }) return null
+        val rule = winningRule(environment, capability) ?: return null
+        val budget = (rule.decision as? RuleDecision.Restrict)?.dailyBudgetMillis ?: return null
+        val used = environment.budgetLedger.usedFor(capability.id, environment.snapshot.epochDay)
+        return (budget - used).coerceAtLeast(0L)
+    }
+
     private fun winningRule(environment: EvaluationEnvironment, capability: CapabilityRef): Rule? =
         environment.rules
             .filter { it.target.matches(capability) && it.condition.holds(environment.snapshot) }

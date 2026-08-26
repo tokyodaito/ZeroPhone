@@ -32,10 +32,12 @@ class DataStoreTaskRepository(context: Context) : TaskRepository {
             prefs[KEY_TASKS]?.let { decode(it) } ?: emptyList()
         }.first()
 
-    override suspend fun addTask(title: String) {
+    override suspend fun addTask(title: String, dueAtMillis: Long?) {
         dataStore.edit { prefs ->
             val tasks = prefs[KEY_TASKS]?.let { decode(it) } ?: emptyList()
-            prefs[KEY_TASKS] = encode(TaskOps.add(tasks, title, generateId(), System.currentTimeMillis()))
+            prefs[KEY_TASKS] = encode(
+                TaskOps.add(tasks, title, generateId(), System.currentTimeMillis(), dueAtMillis)
+            )
         }
     }
 
@@ -43,6 +45,20 @@ class DataStoreTaskRepository(context: Context) : TaskRepository {
         dataStore.edit { prefs ->
             val tasks = prefs[KEY_TASKS]?.let { decode(it) } ?: emptyList()
             prefs[KEY_TASKS] = encode(TaskOps.setDone(tasks, id, done))
+        }
+    }
+
+    override suspend fun updateTask(id: String, title: String, dueAtMillis: Long?) {
+        dataStore.edit { prefs ->
+            val tasks = prefs[KEY_TASKS]?.let { decode(it) } ?: emptyList()
+            prefs[KEY_TASKS] = encode(TaskOps.update(tasks, id, title, dueAtMillis))
+        }
+    }
+
+    override suspend fun deleteTask(id: String) {
+        dataStore.edit { prefs ->
+            val tasks = prefs[KEY_TASKS]?.let { decode(it) } ?: emptyList()
+            prefs[KEY_TASKS] = encode(TaskOps.remove(tasks, id))
         }
     }
 

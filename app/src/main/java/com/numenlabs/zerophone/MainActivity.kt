@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,13 +46,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.numenlabs.zerophone.core.context.AvailabilityState
-import com.numenlabs.zerophone.core.context.CapabilityRef
+import com.numenlabs.zerophone.core.context.CapabilityPackages
 import com.numenlabs.zerophone.core.context.ModeIds
+import com.numenlabs.zerophone.core.context.Rule
+import com.numenlabs.zerophone.core.context.RuleDecision
+import com.numenlabs.zerophone.core.context.RuleTarget
 import com.numenlabs.zerophone.core.data.calendar.CalendarSource
 import com.numenlabs.zerophone.core.data.notifications.ImportantNotificationFilter
 import com.numenlabs.zerophone.core.data.notifications.ImportantNotificationsStore
 import com.numenlabs.zerophone.core.data.notifications.NotificationSettingsRepository
 import com.numenlabs.zerophone.core.data.tasks.TaskRepository
+import com.numenlabs.zerophone.core.data.usage.AndroidUsageStatsSource
 import com.numenlabs.zerophone.core.model.CalendarEvent
 import com.numenlabs.zerophone.core.model.EmergencyWindow
 import com.numenlabs.zerophone.core.model.Task
@@ -63,6 +68,8 @@ import com.numenlabs.zerophone.feature.home.HomeScreen
 import com.numenlabs.zerophone.feature.home.QuickAction
 import com.numenlabs.zerophone.feature.home.R as HomeR
 import com.numenlabs.zerophone.feature.home.quickActionLabel
+import com.numenlabs.zerophone.feature.settings.AppRow
+import com.numenlabs.zerophone.feature.settings.SettingsScreen
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -91,6 +98,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncEngine: com.numenlabs.zerophone.core.data.sync.PhoneSyncEngine
 
+    @Inject
+    lateinit var usageStatsSource: AndroidUsageStatsSource
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -103,6 +113,7 @@ class MainActivity : ComponentActivity() {
                     notificationsStore = notificationsStore,
                     notificationSettings = notificationSettings,
                     syncEngine = syncEngine,
+                    usageStatsSource = usageStatsSource,
                     onQuickActionIntent = ::launchQuickAction
                 )
             }
@@ -166,11 +177,48 @@ internal object HomeRoute
 @Serializable
 internal object AllowlistRoute
 
+@Serializable
+internal object SettingsRoute
+
 /** True when the exact-alarm permission is missing, i.e. re-lock alarms run inexact. */
 private fun exactAlarmsDisabled(context: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
     val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return false
     return !alarmManager.canScheduleExactAlarms()
+}
+
+/** Duration of the per-capability grant given by a long-press on a quick action. */
+private const val GRANT_DURATION_MILLIS = 15L * 60_000L
+
+/** Start of the current device-local day (midnight) for absolute usage measures. */
+private fun localDayStartMillis(nowMillis: Long): Long {
+    val calendar = java.util.Calendar.getInstance().apply {
+        timeInMillis = nowMillis
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+    return calendar.timeInMillis
+}
+
+/**
+ * Capability ids → packages whose foreground time feeds the daily budgets:
+ * the five quick-action capabilities plus every package-targeted rule that
+ * carries a budget.
+ */
+private fun trackedCapabilityPackages(rules: List<Rule>): Map<String, Set<String>> {
+    val tracked = QuickAction.entries.associate { action ->
+        action.capabilityId to CapabilityPackages.packagesOf(action.capabilityId)
+    }.toMutableMap()
+    rules.forEach { rule ->
+        val target = rule.target as? RuleTarget.Package ?: return@forEach
+        val budget = (rule.decision as? RuleDecision.Restrict)?.dailyBudgetMillis ?: return@forEach
+        if (budget > 0L) {
+            tracked[target.packageName] = setOf(target.packageName)
+        }
+    }
+    return tracked
 }
 
 @Composable
@@ -181,6 +229,7 @@ private fun ZeroPhoneApp(
     notificationsStore: ImportantNotificationsStore,
     notificationSettings: NotificationSettingsRepository,
     syncEngine: com.numenlabs.zerophone.core.data.sync.PhoneSyncEngine,
+    usageStatsSource: AndroidUsageStatsSource,
     onQuickActionIntent: (QuickAction) -> Boolean
 ) {
     val context = LocalContext.current
@@ -194,7 +243,7 @@ private fun ZeroPhoneApp(
     var deviceOwner by remember { mutableStateOf(false) }
     var deadline by remember { mutableStateOf(EmergencyWindow.NONE_DEADLINE) }
     var emergencyDuration by remember { mutableStateOf(EmergencyWindow.DEFAULT_DURATION_MS) }
-    var showEmergencyDialog by remember { mutableStateOf(false) }
+    var showEmergencyDialog by rememberSaveable { mutableStateOf(false) }
 
     // Contextual home-screen data.
     var nextEvent by remember { mutableStateOf<CalendarEvent?>(null) }
@@ -206,9 +255,15 @@ private fun ZeroPhoneApp(
     }
     var notificationAccessEnabled by remember { mutableStateOf(true) }
     var exactAlarmsMissing by remember { mutableStateOf(false) }
+    var usageStatsMissing by remember { mutableStateOf(false) }
+    var rules by remember { mutableStateOf<List<Rule>>(emptyList()) }
+    var budgetRemaining by remember {
+        mutableStateOf<Map<QuickAction, Long?>>(emptyMap())
+    }
     // Snackbar strings resolved in composition (not via context.getString)
     // so configuration changes invalidate them properly.
     val noHandlerSnackbarFormat = stringResource(HomeR.string.home_no_handler_snackbar)
+    val grantedSnackbarFormat = stringResource(HomeR.string.home_granted_snackbar)
     val settingsUnavailableMessage = stringResource(HomeR.string.home_settings_unavailable)
     val actionLabels = QuickAction.entries.associate { action ->
         action to stringResource(quickActionLabel(action))
@@ -238,12 +293,31 @@ private fun ZeroPhoneApp(
         scope.launch(Dispatchers.Default) {
             applier.reconcile()
             deviceOwner = applier.isDeviceOwner()
+            rules = applier.getRules()
+            // Accrue time budgets from real foreground usage. The measure is
+            // absolute (whole local day, every pass), so process restarts,
+            // racing refreshes and midnight crossings never double-count.
+            val usageGranted = usageStatsSource.isGranted()
+            if (deviceOwner && usageGranted) {
+                val now = System.currentTimeMillis()
+                val dayStart = localDayStartMillis(now)
+                for ((capabilityId, packages) in trackedCapabilityPackages(rules)) {
+                    applier.setCapabilityUsage(
+                        capabilityId,
+                        usageStatsSource.foregroundMillisBetween(packages, dayStart, now)
+                    )
+                }
+            }
             deadline = applier.emergencyDeadline()
             emergencyDuration = applier.emergencyDurationMillis()
             allowlist = applier.getAllowlist()
             activeMode = applier.getActiveMode()
+            val snapshot = applier.logicalSnapshot(QuickAction.entries.map { it.capabilityId })
             actionStates = QuickAction.entries.associateWith { action ->
-                applier.availabilityOf(CapabilityRef.Logical(action.capabilityId))
+                snapshot.states[action.capabilityId] ?: AvailabilityState.Blocked
+            }
+            budgetRemaining = QuickAction.entries.associateWith { action ->
+                snapshot.budgetRemainingMillis[action.capabilityId]
             }
             nextEvent = calendarSource.nextEvent(nowMillis = System.currentTimeMillis())
             tasks = taskRepository.getTasks()
@@ -252,6 +326,10 @@ private fun ZeroPhoneApp(
                 NotificationManagerCompat.getEnabledListenerPackages(context)
                     .contains(context.packageName)
             exactAlarmsMissing = exactAlarmsDisabled(context)
+            // The usage banner only matters once a rule actually relies on
+            // time budgets.
+            usageStatsMissing = usageGranted.not() &&
+                rules.any { (it.decision as? RuleDecision.Restrict)?.dailyBudgetMillis != null }
             if (reloadApps) {
                 apps = applier.getLauncherApps()
                 appsLoaded = true
@@ -297,12 +375,12 @@ private fun ZeroPhoneApp(
         }
     }
 
-    // Contextual data (next event / tasks) refreshes every minute.
+    // Contextual data AND the policy itself re-evaluate every minute while
+    // the launcher is composed: time windows flip without a resume.
     LaunchedEffect(Unit) {
         while (true) {
             delay(60_000)
-            nextEvent = calendarSource.nextEvent(nowMillis = System.currentTimeMillis())
-            tasks = taskRepository.getTasks()
+            refresh(reloadApps = false)
         }
     }
 
@@ -349,10 +427,13 @@ private fun ZeroPhoneApp(
                 importantUnreadCount = importantUnreadCount,
                 activeMode = activeMode,
                 actionStates = actionStates,
+                budgetRemaining = budgetRemaining,
                 notificationAccessEnabled = notificationAccessEnabled,
                 exactAlarmsDisabled = deviceOwner && exactAlarmsMissing,
+                usageTrackingMissing = deviceOwner && usageStatsMissing,
                 onLaunch = { packageName -> applier.launchPackage(packageName) },
                 onOpenAllowlist = { navController.navigate(AllowlistRoute) },
+                onOpenSettings = { navController.navigate(SettingsRoute) },
                 onEmergencyUnlock = { showEmergencyDialog = true },
                 onRelockNow = {
                     scope.launch(Dispatchers.Default) {
@@ -372,6 +453,14 @@ private fun ZeroPhoneApp(
                         scope.launch { snackbarHostState.showSnackbar(message) }
                     }
                 },
+                onGrantCapability = { action ->
+                    scope.launch(Dispatchers.Default) {
+                        applier.grantCapability(action.capabilityId, GRANT_DURATION_MILLIS)
+                        refresh(reloadApps = false)
+                        val message = String.format(grantedSnackbarFormat, actionLabels[action].orEmpty())
+                        scope.launch { snackbarHostState.showSnackbar(message) }
+                    }
+                },
                 onOpenNotificationAccessSettings = {
                     openSettingsSafely(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                 },
@@ -379,6 +468,9 @@ private fun ZeroPhoneApp(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         openSettingsSafely(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
                     }
+                },
+                onOpenUsageAccessSettings = {
+                    openSettingsSafely(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                 },
                 onAddTask = { title ->
                     scope.launch(Dispatchers.Default) {
@@ -389,6 +481,24 @@ private fun ZeroPhoneApp(
                 onToggleTask = { id, done ->
                     scope.launch(Dispatchers.Default) {
                         taskRepository.setTaskDone(id, done)
+                        tasks = taskRepository.getTasks()
+                    }
+                },
+                onUpdateTask = { id, title, dueAtMillis ->
+                    scope.launch(Dispatchers.Default) {
+                        taskRepository.updateTask(id, title, dueAtMillis)
+                        tasks = taskRepository.getTasks()
+                    }
+                },
+                onDeleteTask = { id ->
+                    scope.launch(Dispatchers.Default) {
+                        taskRepository.deleteTask(id)
+                        tasks = taskRepository.getTasks()
+                    }
+                },
+                onClearCompleted = {
+                    scope.launch(Dispatchers.Default) {
+                        taskRepository.clearCompleted()
                         tasks = taskRepository.getTasks()
                     }
                 }
@@ -404,6 +514,37 @@ private fun ZeroPhoneApp(
                     scope.launch(Dispatchers.Default) {
                         applier.setAllowed(packageName, allowed)
                         allowlist = applier.getAllowlist()
+                    }
+                }
+            )
+        }
+        composable<SettingsRoute> {
+            SettingsScreen(
+                rules = rules,
+                apps = apps
+                    .filter { it.packageName != selfPackage }
+                    .map { AppRow(packageName = it.packageName, label = it.label) },
+                priorityPackages = priorityPackages,
+                emergencyDurationMillis = emergencyDuration,
+                onBack = { navController.popBackStack() },
+                onUpdateRules = { updated ->
+                    scope.launch(Dispatchers.Default) {
+                        applier.updateRules(updated)
+                        refresh(reloadApps = false)
+                    }
+                },
+                onTogglePriorityPackage = { packageName, priority ->
+                    scope.launch(Dispatchers.Default) {
+                        val updated = notificationSettings.getPriorityPackages().toMutableSet()
+                        if (priority) updated.add(packageName) else updated.remove(packageName)
+                        notificationSettings.setPriorityPackages(updated)
+                        priorityPackages = updated
+                    }
+                },
+                onSetEmergencyDuration = { durationMillis ->
+                    scope.launch(Dispatchers.Default) {
+                        applier.setEmergencyDuration(durationMillis)
+                        emergencyDuration = durationMillis
                     }
                 }
             )

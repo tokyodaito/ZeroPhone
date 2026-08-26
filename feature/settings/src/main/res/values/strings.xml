@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_title">Настройки</string>
+    <string name="settings_back_desc">Назад</string>
+
+    <string name="settings_emergency_section">Экстренная разблокировка</string>
+    <string name="settings_emergency_duration_hint">Длительность по умолчанию</string>
+    <string name="settings_duration_minutes">%1$d мин</string>
+
+    <string name="settings_rules_section">Правила доступности</string>
+    <string name="settings_rules_hint">Правила применяются к быстрым действиям и приложениям: время, режим и дневной лимит. Более конкретное правило побеждает.</string>
+    <string name="settings_rules_add">Добавить правило</string>
+    <string name="settings_rule_delete_desc">Удалить правило</string>
+
+    <string name="settings_priority_section">Важные уведомления</string>
+    <string name="settings_priority_hint">Уведомления этих приложений всегда считаются важными (плюс любые каналы высокой важности).</string>
+    <string name="settings_priority_search_hint">Поиск приложения</string>
+
+    <string name="settings_rule_target_capability">Способность</string>
+    <string name="settings_rule_target_package">Приложение</string>
+    <string name="settings_rule_target_all">Всё</string>
+    <string name="settings_rule_condition_always">Всегда</string>
+    <string name="settings_rule_condition_time">По времени</string>
+    <string name="settings_rule_condition_mode">В режиме</string>
+    <string name="settings_rule_decision_allow">Разрешить</string>
+    <string name="settings_rule_decision_limit">Лимит времени</string>
+    <string name="settings_rule_decision_block">Запретить</string>
+    <string name="settings_rule_start_time">Начало</string>
+    <string name="settings_rule_end_time">Конец</string>
+    <string name="settings_rule_budget_minutes_label">Лимит в день (мин)</string>
+    <string name="settings_rule_budget_minutes">%1$d мин</string>
+    <string name="settings_rule_add_confirm">Добавить</string>
+    <string name="settings_rule_time_range">%1$s–%2$s</string>
+    <string name="settings_rule_days_count">%1$d дн</string>
+
+    <string name="settings_capability_call">Позвонить</string>
+    <string name="settings_capability_message">Написать</string>
+    <string name="settings_capability_navigate">Доехать</string>
+    <string name="settings_capability_pay">Заплатить</string>
+    <string name="settings_capability_camera">Камера</string>
+
+    <string name="settings_mode_work">Работа</string>
+    <string name="settings_mode_rest">Отдых</string>
+    <string name="settings_mode_focus">Фокус</string>
+</resources>
